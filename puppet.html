@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>AR Puppet · Control a fake VR user</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --panel: #18181b;
+      --border: #27272a;
+      --text: #e4e4e7;
+      --muted: #71717a;
+      --accent: #6366f1;
+      --success: #10b981;
+      --cell-size: 36px;
+      --cell-gap: 2px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      overflow: hidden; height: 100%;
+      -webkit-user-select: none; user-select: none;
+    }
+    body { display: grid; grid-template-rows: 48px 1fr 72px; height: 100vh; }
+
+    header {
+      padding: 0 16px;
+      display: flex; align-items: center; gap: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 14px; margin: 0; font-weight: 600; letter-spacing: 0.02em; }
+    header .hint { font-size: 11px; color: var(--muted); }
+    header .status { margin-left: auto; font-size: 12px; color: var(--muted); }
+    header .status-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      background: var(--success);
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+
+    .stage {
+      position: relative; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .grid-board { position: relative; padding: 20px; cursor: crosshair; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(20, var(--cell-size));
+      grid-auto-rows: var(--cell-size);
+      gap: var(--cell-gap);
+    }
+    .cell {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+    }
+
+    .players-layer, .self-layer {
+      position: absolute; inset: 0; pointer-events: none;
+    }
+
+    /* Shared with portal.html rendering */
+    .player-dot {
+      position: absolute;
+      width: 11px; height: 11px;
+      background: var(--pcolor, #6366f1);
+      border: 2px solid #fff;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2;
+      box-shadow:
+        0 0 0 2px var(--pcolor-soft, rgba(99,102,241,0.4)),
+        0 0 8px var(--pcolor-glow, rgba(99,102,241,0.6));
+      transition: left 0.1s, top 0.1s;
+    }
+    .player-cone {
+      position: absolute;
+      width: 0; height: 0;
+      z-index: 1;
+      transition: left 0.1s, top 0.1s, transform 0.1s;
+    }
+    .player-cone::before {
+      content: '';
+      position: absolute;
+      width: 120px; height: 120px;
+      left: -60px; top: 0;
+      background: linear-gradient(
+        180deg,
+        var(--pcolor-cone-near, rgba(99,102,241,0.55)) 0%,
+        var(--pcolor-cone-far, rgba(99,102,241,0.08)) 100%
+      );
+      clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+    }
+
+    /* Self marker — instant response, pulsing highlight */
+    .self-dot {
+      width: 14px; height: 14px;
+      background: #fff;
+      border: 3px solid var(--accent);
+      transition: none;
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    .self-cone { transition: none; }
+    .self-cone::before {
+      background: linear-gradient(
+        180deg,
+        rgba(255,255,255,0.7) 0%,
+        rgba(99,102,241,0.1) 100%
+      );
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 2px rgba(99,102,241,0.5), 0 0 8px rgba(99,102,241,0.8); }
+      50%      { box-shadow: 0 0 0 6px rgba(99,102,241,0.2), 0 0 18px rgba(99,102,241,1); }
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+      font-size: 11px; color: var(--muted);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: center;
+    }
+    .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+    kbd {
+      display: inline-block;
+      min-width: 16px; text-align: center;
+      padding: 1px 5px;
+      font: 600 10px ui-monospace, monospace;
+      border: 1px solid var(--border);
+      border-bottom-width: 2px;
+      border-radius: 3px;
+      background: var(--panel);
+      color: var(--text);
+      margin: 0 1px;
+    }
+    .pos { font: 11px ui-monospace, monospace; color: var(--text); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎭 Puppet</h1>
+    <span class="hint">Control a fake VR user from your laptop</span>
+    <span class="status"><span class="status-dot" id="ws-dot"></span><span id="ws-label">Connecting…</span></span>
+  </header>
+
+  <div class="stage">
+    <div class="grid-board" id="board">
+      <div class="grid" id="grid"></div>
+      <div class="players-layer" id="players-layer"></div>
+      <div class="self-layer">
+        <div class="player-cone self-cone" id="self-cone"></div>
+        <div class="player-dot self-dot" id="self-dot"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="controls">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span>
+      <span><kbd>⇧</kbd> run</span>
+      <span>mouse aim</span>
+      <span>click teleport</span>
+    </div>
+    <div class="pos" id="pos-readout">—</div>
+  </footer>
+
+  <script>
+    const COLS = 20, ROWS = 10;
+
+    // ── Build grid ───────────────────────────────────────────
+    const gridEl = document.getElementById('grid');
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        gridEl.appendChild(cell);
+      }
+    }
+
+    // ── WebSocket ────────────────────────────────────────────
+    const WS_URL = `ws://${location.hostname}:3001`;
+    let ws = null;
+    let wsReady = false;
+    let myUserId = null;
+
+    function wsSend(msg) {
+      if (wsReady) ws.send(JSON.stringify(msg));
+    }
+    function setStatus(connected) {
+      wsReady = connected;
+      document.getElementById('ws-dot').style.background = connected ? '#10b981' : '#ef4444';
+      document.getElementById('ws-label').textContent = connected ? 'Live sync' : 'Reconnecting…';
+    }
+
+    function connectWS() {
+      ws = new WebSocket(WS_URL);
+      ws.onopen = () => { console.log('[Puppet] Connected'); setStatus(true); };
+      ws.onclose = () => { setStatus(false); setTimeout(connectWS, 2000); };
+      ws.onerror = () => {};
+      ws.onmessage = (e) => {
+        let msg;
+        try { msg = JSON.parse(e.data); } catch { return; }
+        switch (msg.type) {
+          case 'WELCOME':
+            myUserId = msg.userId;
+            console.log('[Puppet] userId', myUserId.slice(0, 8));
+            for (const id of [...players.keys()]) removePlayer(id);
+            for (const [uid, user] of Object.entries(msg.users || {})) {
+              if (uid !== myUserId) updatePlayer(uid, user.position);
+            }
+            break;
+          case 'USER_JOIN':
+            if (msg.userId !== myUserId) updatePlayer(msg.userId, msg.position);
+            break;
+          case 'USER_LEAVE':
+            removePlayer(msg.userId);
+            break;
+          case 'PLAYER_POSITION':
+            if (msg.userId !== myUserId) updatePlayer(msg.userId, msg.position);
+            break;
+        }
+      };
+    }
+    connectWS();
+
+    // ── Puppet state + input ─────────────────────────────────
+    // World coords: x ∈ [-10,10], z ∈ [-5,5]. +z world = screen down.
+    const self = { x: 0, z: 0, heading: 0 };
+    const keys = {};
+    const SPEED_WALK = 2.5; // m/s
+    const SPEED_RUN  = 6.0;
+
+    window.addEventListener('keydown', (e) => {
+      keys[e.key.toLowerCase()] = true;
+      // Prevent arrow/space scrolling the page
+      if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    // Mouse aim: puppet faces the mouse cursor (when over the grid).
+    let mouseWorld = null;
+    const boardEl = document.getElementById('board');
+    boardEl.addEventListener('mousemove', (e) => {
+      const p = screenToWorld(e.clientX, e.clientY);
+      if (p) mouseWorld = p;
+    });
+    boardEl.addEventListener('mouseleave', () => { mouseWorld = null; });
+    // Click = teleport
+    boardEl.addEventListener('click', (e) => {
+      const p = screenToWorld(e.clientX, e.clientY);
+      if (p) { self.x = p.x; self.z = p.z; }
+    });
+
+    // ── Coordinate mapping ───────────────────────────────────
+    // Grid spans x ∈ [-10, 10], z ∈ [-5, 5] in world units.
+    // Screen bounds derived from the top-left of (r=0, c=0) to the
+    // bottom-right of (r=9, c=19).
+    function gridBounds() {
+      const c00 = gridEl.querySelector('[data-r="0"][data-c="0"]');
+      const c19 = gridEl.querySelector('[data-r="0"][data-c="19"]');
+      const c90 = gridEl.querySelector('[data-r="9"][data-c="0"]');
+      if (!c00 || !c19 || !c90) return null;
+      const board = c00.closest('.grid-board');
+      const boardRect = board.getBoundingClientRect();
+      const r00 = c00.getBoundingClientRect();
+      const r19 = c19.getBoundingClientRect();
+      const r90 = c90.getBoundingClientRect();
+      return {
+        screenLeft: r00.left,
+        screenTop:  r00.top,
+        screenW:    r19.right - r00.left,
+        screenH:    r90.bottom - r00.top,
+        boardLeft:  r00.left - boardRect.left,
+        boardTop:   r00.top  - boardRect.top,
+      };
+    }
+
+    function screenToWorld(sx, sy) {
+      const b = gridBounds();
+      if (!b) return null;
+      const nx = (sx - b.screenLeft) / b.screenW;
+      const nz = (sy - b.screenTop)  / b.screenH;
+      if (nx < 0 || nx > 1 || nz < 0 || nz > 1) return null;
+      return { x: nx * 20 - 10, z: nz * 10 - 5 };
+    }
+
+    function worldToBoard(x, z) {
+      const b = gridBounds();
+      if (!b) return null;
+      const nx = (x + 10) / 20;
+      const nz = (z +  5) / 10;
+      return { px: b.boardLeft + nx * b.screenW, py: b.boardTop + nz * b.screenH };
+    }
+
+    // ── Main loop ────────────────────────────────────────────
+    let lastTime = performance.now();
+    let lastSent = 0;
+    const selfDot = document.getElementById('self-dot');
+    const selfCone = document.getElementById('self-cone');
+
+    function loop(now) {
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+
+      // WASD / arrows → world-axis velocity
+      const speed = keys['shift'] ? SPEED_RUN : SPEED_WALK;
+      let mx = 0, mz = 0;
+      if (keys['w'] || keys['arrowup'])    mz -= 1;
+      if (keys['s'] || keys['arrowdown'])  mz += 1;
+      if (keys['a'] || keys['arrowleft'])  mx -= 1;
+      if (keys['d'] || keys['arrowright']) mx += 1;
+      const len = Math.hypot(mx, mz);
+      if (len > 0) {
+        self.x += (mx / len) * speed * dt;
+        self.z += (mz / len) * speed * dt;
+      }
+      // Clamp to grid
+      self.x = Math.max(-9.9, Math.min(9.9, self.x));
+      self.z = Math.max(-4.9, Math.min(4.9, self.z));
+
+      // Heading: prefer mouse aim, fall back to movement direction
+      if (mouseWorld) {
+        const dx = mouseWorld.x - self.x;
+        const dz = mouseWorld.z - self.z;
+        if (Math.hypot(dx, dz) > 0.25) {
+          self.heading = Math.atan2(dx, dz);
+        }
+      } else if (len > 0) {
+        self.heading = Math.atan2(mx, mz);
+      }
+
+      // Render self + readout
+      const p = worldToBoard(self.x, self.z);
+      if (p) {
+        selfDot.style.left = p.px + 'px';
+        selfDot.style.top  = p.py + 'px';
+        selfCone.style.left = p.px + 'px';
+        selfCone.style.top  = p.py + 'px';
+        selfCone.style.transform = `rotate(${self.heading * 180 / Math.PI}deg)`;
+      }
+      document.getElementById('pos-readout').textContent =
+        `x=${self.x.toFixed(1)}  z=${self.z.toFixed(1)}  ·  ${(self.heading * 180 / Math.PI).toFixed(0)}°`;
+
+      // Send at 10 Hz to server
+      if (now - lastSent > 100) {
+        lastSent = now;
+        wsSend({
+          type: 'PLAYER_POSITION',
+          position: { x: self.x, z: self.z, heading: self.heading },
+          spaceId: null,
+        });
+      }
+
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // ── Multi-user presence (other users on the grid) ───────
+    const players = new Map();
+    const PALETTE = [
+      { solid:'#6366f1', soft:'rgba(99,102,241,0.4)',  glow:'rgba(99,102,241,0.6)',  near:'rgba(99,102,241,0.55)', far:'rgba(99,102,241,0.08)' },
+      { solid:'#ec4899', soft:'rgba(236,72,153,0.4)',  glow:'rgba(236,72,153,0.6)',  near:'rgba(236,72,153,0.55)', far:'rgba(236,72,153,0.08)' },
+      { solid:'#f59e0b', soft:'rgba(245,158,11,0.4)',  glow:'rgba(245,158,11,0.6)',  near:'rgba(245,158,11,0.55)', far:'rgba(245,158,11,0.08)' },
+      { solid:'#10b981', soft:'rgba(16,185,129,0.4)',  glow:'rgba(16,185,129,0.6)',  near:'rgba(16,185,129,0.55)', far:'rgba(16,185,129,0.08)' },
+      { solid:'#3b82f6', soft:'rgba(59,130,246,0.4)',  glow:'rgba(59,130,246,0.6)',  near:'rgba(59,130,246,0.55)', far:'rgba(59,130,246,0.08)' },
+      { solid:'#ef4444', soft:'rgba(239,68,68,0.4)',   glow:'rgba(239,68,68,0.6)',   near:'rgba(239,68,68,0.55)',  far:'rgba(239,68,68,0.08)'  },
+      { solid:'#a855f7', soft:'rgba(168,85,247,0.4)',  glow:'rgba(168,85,247,0.6)',  near:'rgba(168,85,247,0.55)', far:'rgba(168,85,247,0.08)' },
+      { solid:'#14b8a6', soft:'rgba(20,184,166,0.4)',  glow:'rgba(20,184,166,0.6)',  near:'rgba(20,184,166,0.55)', far:'rgba(20,184,166,0.08)' },
+    ];
+    function colorForUser(id) {
+      let h = 0;
+      for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+      return PALETTE[Math.abs(h) % PALETTE.length];
+    }
+    function ensurePlayer(userId) {
+      let entry = players.get(userId);
+      if (entry) return entry;
+      const c = colorForUser(userId);
+      const layer = document.getElementById('players-layer');
+      const cone = document.createElement('div'); cone.className = 'player-cone';
+      const dot  = document.createElement('div'); dot.className  = 'player-dot';
+      [dot, cone].forEach(el => {
+        el.style.setProperty('--pcolor', c.solid);
+        el.style.setProperty('--pcolor-soft', c.soft);
+        el.style.setProperty('--pcolor-glow', c.glow);
+        el.style.setProperty('--pcolor-cone-near', c.near);
+        el.style.setProperty('--pcolor-cone-far', c.far);
+      });
+      layer.appendChild(cone);
+      layer.appendChild(dot);
+      entry = { dot, cone };
+      players.set(userId, entry);
+      return entry;
+    }
+    function removePlayer(userId) {
+      const entry = players.get(userId);
+      if (!entry) return;
+      entry.dot.remove();
+      entry.cone.remove();
+      players.delete(userId);
+    }
+    function updatePlayer(userId, pos) {
+      if (!pos) return;
+      const entry = ensurePlayer(userId);
+      const p = worldToBoard(pos.x, pos.z);
+      if (!p) return;
+      entry.dot.style.left = p.px + 'px';
+      entry.dot.style.top  = p.py + 'px';
+      if (typeof pos.heading === 'number') {
+        entry.cone.style.left = p.px + 'px';
+        entry.cone.style.top  = p.py + 'px';
+        entry.cone.style.transform = `rotate(${pos.heading * 180 / Math.PI}deg)`;
+      }
+    }
+  </script>
+</body>
+</html>
