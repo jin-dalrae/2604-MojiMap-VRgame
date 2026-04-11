@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/portal",
+      "destination": "/portal.html"
+    },
+    {
+      "source": "/broadcast",
+      "destination": "/broadcast.html"
+    }
+  ]
+}

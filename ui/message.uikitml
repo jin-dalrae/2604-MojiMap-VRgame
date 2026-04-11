@@ -1,0 +1,19 @@
+<style>
+  .message-container {
+    padding: 1.5;
+    background-color: #6366f1;
+    border-radius: 1.5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .message-text {
+    font-size: 2.5;
+    color: white;
+    font-weight: bold;
+    text-align: center;
+  }
+</style>
+<div class="message-container">
+  <span class="message-text" id="content">Hello!</span>
+</div>
