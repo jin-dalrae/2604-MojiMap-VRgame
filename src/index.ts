@@ -32,6 +32,7 @@ import {
 
 import { BallSystem } from "./ball.js";
 import { SurfaceSpawnSystem } from "./spawn.js";
+import { PortalSystem } from "./portal.js";
 
 import { PanelSystem } from "./panel.js";
 
@@ -163,7 +164,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     .registerSystem(PanelSystem)
     .registerSystem(RobotSystem)
     .registerSystem(BallSystem)
-    .registerSystem(SurfaceSpawnSystem);
+    .registerSystem(SurfaceSpawnSystem)
+    .registerSystem(PortalSystem);
 
   // Surface Spawner Reticle
   const reticleGeometry = new TorusGeometry(0.05, 0.005, 16, 32);
