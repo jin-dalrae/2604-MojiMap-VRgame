@@ -97,7 +97,3 @@ To experience the full power of native passthrough:
 ## 📜 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-*Built with ❤️ using [IWSDK](https://iwsdk.dev) by jin-dalrae.*
