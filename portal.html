@@ -23,7 +23,7 @@
         --cell-border: #222226;
         --success: #10b981;
         /* cell size: fit 20 cols + 19 gaps(2px) + board/area padding into viewport width */
-        --cell-size: clamp(14px, calc((100vw - 72px) / 20), 32px);
+        --cell-size: clamp(14px, calc((100vw - 88px) / 20), 32px);
       }
 
       html, body {
@@ -88,8 +88,8 @@
         align-items: center;
         justify-content: flex-start;
         overflow: hidden;
-        padding: 8px 12px 0;
-        gap: 6px;
+        padding: 12px 20px 8px;
+        gap: 8px;
       }
 
       .grid-meta {
@@ -102,8 +102,8 @@
         position: relative;
         background: #0d0d10;
         border: 1px solid var(--border);
-        border-radius: 5px;
-        padding: 5px;
+        border-radius: 6px;
+        padding: 8px;
         box-shadow: 0 4px 24px rgba(0,0,0,0.5);
       }
 
@@ -123,7 +123,7 @@
         display: grid;
         grid-template-columns: repeat(20, var(--cell-size));
         grid-template-rows: repeat(10, var(--cell-size));
-        gap: 2px;
+        gap: 3px;
       }
 
       .cell {
@@ -248,6 +248,22 @@
         vertical-align: middle;
       }
 
+      /* ── Player dot ── */
+      .player-dot {
+        position: absolute;
+        width: 11px;
+        height: 11px;
+        background: #6366f1;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        z-index: 10;
+        box-shadow: 0 0 0 2px rgba(99,102,241,0.4), 0 0 8px rgba(99,102,241,0.6);
+        transition: left 0.1s, top 0.1s;
+        display: none;
+      }
+
       /* ── Drag ghost ── */
       #drag-ghost {
         position: fixed;
@@ -334,6 +350,7 @@
         <span class="compass compass-w">W</span>
         <span class="compass compass-e">E</span>
         <div class="grid" id="grid-mobile"></div>
+        <div class="player-dot" id="dot-mobile"></div>
       </div>
     </div>
 
@@ -388,12 +405,13 @@
           <span class="compass compass-w">W</span>
           <span class="compass compass-e">E</span>
           <div class="grid" id="grid-desktop"></div>
+          <div class="player-dot" id="dot-desktop"></div>
         </div>
       </div>
     </div>
 
     <footer>
-      <span><span class="status-dot"></span>BroadcastChannel</span>
+      <span><span class="status-dot" id="ws-dot"></span><span id="ws-label">Connecting…</span></span>
       <span id="item-count">0 items</span>
     </footer>
 
@@ -401,22 +419,127 @@
 
     <script>
       const COLS = 20, ROWS = 10;
-      const channel = new BroadcastChannel('xr-portal');
 
-      // Detect active grid based on viewport
+      // ── WebSocket sync ───────────────────────────────────────
+      const WS_URL = `ws://${location.hostname}:3001`;
+      let ws = null;
+      let wsReady = false;
+
+      function wsSend(msg) {
+        if (wsReady) ws.send(JSON.stringify(msg));
+      }
+
+      function setWsStatus(connected) {
+        wsReady = connected;
+        const dot = document.getElementById('ws-dot');
+        const label = document.getElementById('ws-label');
+        dot.style.background = connected ? '#10b981' : '#ef4444';
+        label.textContent = connected ? 'Live sync' : 'Reconnecting…';
+      }
+
+      function connectWS() {
+        ws = new WebSocket(WS_URL);
+
+        ws.onopen = () => {
+          console.log('[GridSync] Connected');
+          setWsStatus(true);
+        };
+
+        ws.onclose = () => {
+          setWsStatus(false);
+          setTimeout(connectWS, 2000);
+        };
+
+        ws.onerror = () => {};
+
+        ws.onmessage = (e) => {
+          let msg;
+          try { msg = JSON.parse(e.data); } catch { return; }
+
+          switch (msg.type) {
+            case 'INIT':
+              state.clear();
+              for (const [key, item] of Object.entries(msg.grid)) {
+                state.set(key, item);
+              }
+              syncGrids();
+              if (msg.playerPosition) updatePlayerDot(msg.playerPosition);
+              break;
+
+            case 'GRID_UPDATE':
+              state.set(msg.key, msg.item);
+              syncGrids();
+              break;
+
+            case 'GRID_CLEAR':
+              state.delete(msg.key);
+              syncGrids();
+              break;
+
+            case 'GRID_CLEAR_ALL':
+              state.clear();
+              syncGrids();
+              break;
+
+            case 'PLAYER_POSITION':
+              updatePlayerDot(msg.position);
+              break;
+          }
+        };
+      }
+
+      connectWS();
+
+      // ── Player dot ───────────────────────────────────────────
+      // VR world: col c → x = c - 9.5, row r → z = r - 4.5
+      // Inverse:  col = x + 9.5, row = z + 4.5
+      function updatePlayerDot(pos) {
+        ['grid-mobile', 'grid-desktop'].forEach(gridId => {
+          const gridEl = document.getElementById(gridId);
+          const dotId = gridId === 'grid-mobile' ? 'dot-mobile' : 'dot-desktop';
+          const dot = document.getElementById(dotId);
+          if (!gridEl || !dot) return;
+
+          const c00 = gridEl.querySelector('[data-r="0"][data-c="0"]');
+          const c01 = gridEl.querySelector('[data-r="0"][data-c="1"]');
+          const c10 = gridEl.querySelector('[data-r="1"][data-c="0"]');
+          if (!c00 || !c01 || !c10) return;
+
+          const board = c00.closest('.grid-board');
+          const boardRect = board.getBoundingClientRect();
+          const r00 = c00.getBoundingClientRect();
+          const r01 = c01.getBoundingClientRect();
+          const r10 = c10.getBoundingClientRect();
+
+          const cellW = r00.width;
+          const cellH = r00.height;
+          const gapX = r01.left - r00.right;
+          const gapY = r10.top  - r00.bottom;
+
+          const col = pos.x + 9.5; // float col
+          const row = pos.z + 4.5; // float row
+
+          const px = (r00.left - boardRect.left) + col * (cellW + gapX) + cellW / 2;
+          const py = (r00.top  - boardRect.top)  + row * (cellH + gapY) + cellH / 2;
+
+          dot.style.display = 'block';
+          dot.style.left = px + 'px';
+          dot.style.top  = py + 'px';
+        });
+      }
+
+      // ── Grid state ───────────────────────────────────────────
       function isMobile() { return window.innerWidth < 640; }
-
       function activeGrid() {
         return isMobile()
           ? document.getElementById('grid-mobile')
           : document.getElementById('grid-desktop');
       }
 
-      // Shared state
-      const state = new Map(); // "r,c" -> {type, icon, label}
+      const state = new Map();
       let dragging = null;
       let fromCell = null;
-      let selectedItem = null; // for tap-to-place
+      let selectedItem = null;
 
       // ── Build both grids ─────────────────────────────────────
       ['grid-mobile', 'grid-desktop'].forEach(gridId => {
@@ -436,14 +559,12 @@
         }
       });
 
-      // Sync grids: whenever state changes, rerender both
       function syncGrids() {
         ['grid-mobile', 'grid-desktop'].forEach(gridId => {
           const gridEl = document.getElementById(gridId);
           gridEl.querySelectorAll('.cell').forEach(cell => {
             const key = `${cell.dataset.r},${cell.dataset.c}`;
             const item = state.get(key);
-            // Clear first
             cell.classList.remove('occupied');
             cell.removeAttribute('draggable');
             if (cell._dragStart) { cell.removeEventListener('dragstart', cell._dragStart); cell._dragStart = null; }
@@ -463,12 +584,8 @@
               cell.appendChild(x);
               makeCellDraggable(cell, key);
             }
-            // Highlight tap target cells
-            if (selectedItem && !item) {
-              cell.classList.add('tap-target');
-            } else {
-              cell.classList.remove('tap-target');
-            }
+            if (selectedItem && !item) cell.classList.add('tap-target');
+            else cell.classList.remove('tap-target');
           });
         });
         updateCount();
@@ -480,21 +597,12 @@
         const r = parseInt(this.dataset.r);
         const c = parseInt(this.dataset.c);
         const key = `${r},${c}`;
-
-        if (state.has(key)) {
-          // Toggle remove highlight on touch
-          this.classList.toggle('show-remove');
-          return;
-        }
-
-        if (selectedItem) {
-          placeItem(key, selectedItem);
-        }
+        if (state.has(key)) { this.classList.toggle('show-remove'); return; }
+        if (selectedItem) placeItem(key, selectedItem);
       }
 
       // ── Palette setup ────────────────────────────────────────
       document.querySelectorAll('.item').forEach(el => {
-        // Drag (desktop)
         el.setAttribute('draggable', 'true');
         el.addEventListener('dragstart', (e) => {
           dragging = { type: el.dataset.type, icon: el.dataset.icon, label: el.dataset.label };
@@ -505,16 +613,11 @@
           e.dataTransfer.effectAllowed = 'copy';
           e.dataTransfer.setDragImage(new Image(), 0, 0);
         });
-        el.addEventListener('dragend', () => {
-          el.classList.remove('dragging-active');
-          endDrag();
-        });
+        el.addEventListener('dragend', () => { el.classList.remove('dragging-active'); endDrag(); });
 
-        // Tap (mobile)
         el.addEventListener('click', () => {
           const data = { type: el.dataset.type, icon: el.dataset.icon, label: el.dataset.label };
           if (selectedItem && selectedItem.type === data.type) {
-            // Deselect
             selectedItem = null;
             document.querySelectorAll('.item').forEach(i => i.classList.remove('selected'));
           } else {
@@ -528,25 +631,13 @@
 
       // ── Ghost ────────────────────────────────────────────────
       const ghost = document.getElementById('drag-ghost');
-
-      function showGhost(icon, e) {
-        ghost.textContent = icon;
-        ghost.style.display = 'block';
-        moveGhost(e);
-      }
-
+      function showGhost(icon, e) { ghost.textContent = icon; ghost.style.display = 'block'; moveGhost(e); }
       document.addEventListener('dragover', (e) => { e.preventDefault(); moveGhost(e); });
-
-      function moveGhost(e) {
-        ghost.style.left = e.clientX + 'px';
-        ghost.style.top  = e.clientY + 'px';
-      }
-
+      function moveGhost(e) { ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px'; }
       function endDrag() {
         ghost.style.display = 'none';
         document.querySelectorAll('.grid').forEach(g => g.classList.remove('accepting'));
-        dragging = null;
-        fromCell = null;
+        dragging = null; fromCell = null;
       }
 
       // ── Cell drag events ─────────────────────────────────────
@@ -555,9 +646,7 @@
         this.classList.add('drag-over');
         e.dataTransfer.dropEffect = fromCell ? 'move' : 'copy';
       }
-
       function onCellDragLeave() { this.classList.remove('drag-over'); }
-
       function onCellDrop(e) {
         e.preventDefault();
         this.classList.remove('drag-over');
@@ -571,8 +660,7 @@
       function makeCellDraggable(cell, key) {
         cell.setAttribute('draggable', 'true');
         cell._dragStart = (e) => {
-          dragging = state.get(key);
-          fromCell = key;
+          dragging = state.get(key); fromCell = key;
           activeGrid().classList.add('accepting');
           showGhost(dragging.icon, e);
           e.dataTransfer.effectAllowed = 'move';
@@ -583,16 +671,18 @@
         cell.addEventListener('dragend', cell._dragEnd);
       }
 
-      // ── State helpers ────────────────────────────────────────
+      // ── State helpers (optimistic + server sync) ─────────────
       function placeItem(key, item) {
         state.set(key, item);
         syncGrids();
+        wsSend({ type: 'GRID_PLACE', key, item });
       }
 
       function clearCell(key) {
         if (!state.has(key)) return;
         state.delete(key);
         syncGrids();
+        wsSend({ type: 'GRID_CLEAR', key });
       }
 
       function updateCount() {
@@ -606,24 +696,21 @@
         selectedItem = null;
         document.querySelectorAll('.item').forEach(i => i.classList.remove('selected'));
         syncGrids();
+        wsSend({ type: 'GRID_CLEAR_ALL' });
       });
 
-      // ── Transmit ─────────────────────────────────────────────
+      // ── Transmit (force re-sync) ──────────────────────────────
       document.getElementById('transmit-btn').addEventListener('click', () => {
-        const items = [];
+        // Re-send all placed items to server (useful if VR reconnects)
         for (const [key, item] of state.entries()) {
-          const [row, col] = key.split(',').map(Number);
-          items.push({ row, col, ...item });
+          wsSend({ type: 'GRID_PLACE', key, item });
         }
-        channel.postMessage({ type: 'SPAWN_GRID', items });
-
         const btn = document.getElementById('transmit-btn');
-        btn.textContent = '✓ Sent!';
+        btn.textContent = '✓ Synced!';
         btn.style.background = '#10b981';
         setTimeout(() => { btn.textContent = 'Transmit'; btn.style.background = ''; }, 1500);
       });
 
-      // Initial render
       syncGrids();
     </script>
   </body>

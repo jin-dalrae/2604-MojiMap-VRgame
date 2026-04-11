@@ -185,8 +185,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   world.createTransformEntity(reticleMesh)
     .addComponent(EnvironmentRaycastTarget, { space: RaycastSpace.Right });
 
-  // Grid Floor (Matching Portal Grid)
-  const gridSize = 10;
+  // Grid Floor (Matching Portal Grid — 20 cols × 10 rows, 1m cells)
+  const gridSize = 20;
   const gridHelper = new GridHelper(gridSize, gridSize, 0x6366f1, 0x27272a);
   gridHelper.position.y = 0.01;
   gridHelper.material.transparent = true;
