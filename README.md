@@ -102,4 +102,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Built with ❤️ using [IWSDK](https://iwsdk.dev) by jin-dalrae.*
+## 👥 The Team
+- **Rae**
+- **Yoyo**
+- **Ted**
+
+Created for the **Prototyping** class at **CCA (California College of the Arts)**, Spring 2026.
+
+---
+
+*Built with ❤️ using [IWSDK](https://iwsdk.dev) by the Prototyping Team.*
