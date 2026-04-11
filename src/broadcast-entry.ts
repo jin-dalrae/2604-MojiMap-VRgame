@@ -7,6 +7,7 @@ import {
   World,
   AssetManager,
   SRGBColorSpace,
+  Vector3,
 } from "@iwsdk/core";
 
 import { SyncSystem, Synced } from "./sync.js";
@@ -31,9 +32,58 @@ async function init() {
 
   const { scene, camera } = world;
   
-  // Configure Broadcast Camera View
-  camera.position.set(3, 3, 5);
-  camera.lookAt(0, 1, 0);
+  // Camera Orbit State
+  let alpha = Math.PI / 4; // Horizontal rotation
+  let beta = Math.PI / 6;  // Vertical rotation
+  let radius = 6;          // Distance from center
+  const target = new Vector3(0, 1, 0);
+
+  const updateCamera = () => {
+    // Clamp beta to avoid flipping
+    beta = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, beta));
+    
+    camera.position.x = radius * Math.cos(alpha) * Math.cos(beta);
+    camera.position.y = radius * Math.sin(beta) + target.y;
+    camera.position.z = radius * Math.sin(alpha) * Math.cos(beta);
+    camera.lookAt(target);
+  };
+  
+  updateCamera();
+
+  // Mouse Interactivity
+  let isDragging = false;
+  let lastX = 0;
+  let lastY = 0;
+
+  container.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    
+    alpha -= dx * 0.01;
+    beta += dy * 0.01;
+    
+    updateCamera();
+    
+    lastX = e.clientX;
+    lastY = e.clientY;
+  });
+
+  window.addEventListener("mouseup", () => {
+    isDragging = false;
+  });
+
+  // Scroll to zoom
+  container.addEventListener("wheel", (e) => {
+    radius = Math.max(2, Math.min(15, radius + e.deltaY * 0.01));
+    updateCamera();
+  }, { passive: true });
 
   // Register Sync System
   world.registerSystem(SyncSystem);
