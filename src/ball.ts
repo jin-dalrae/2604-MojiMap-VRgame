@@ -16,6 +16,7 @@ import {
   DistanceGrabbable,
   MovementMode,
 } from "@iwsdk/core";
+import { Synced } from "./sync.js";
 
 export const Ball = createComponent("Ball", {
   originalPosition: { type: Types.Vec3, default: [0, 0, 0] },
@@ -79,6 +80,9 @@ export class BallSystem extends createSystem({
     entity.addComponent(PhysicsShape, {
       shape: PhysicsShapeType.Sphere,
     });
+    
+    // Enable state sync for broadcast
+    entity.addComponent(Synced, { id: `ball_${Date.now()}_${Math.random()}` });
 
     return entity;
   }

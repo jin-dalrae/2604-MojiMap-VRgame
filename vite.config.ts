@@ -26,6 +26,7 @@ export default defineConfig({
       input: {
         main: "./index.html",
         portal: "./portal.html",
+        broadcast: "./broadcast.html",
       },
     },
   },
