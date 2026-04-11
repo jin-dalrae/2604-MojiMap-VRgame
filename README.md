@@ -1,3 +1,5 @@
+Ted was here
+
 # 🌌 The Prototyping Void: Quest AR Playground
 
 A premium, high-performance WebXR prototype built with the **Immersive Web SDK (IWSDK)**. This project demonstrates advanced spatial features like AR passthrough, environment hit-testing, and complex physics-driven interactions within a modern ECS architecture.
