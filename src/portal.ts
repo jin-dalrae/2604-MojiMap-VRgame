@@ -22,6 +22,8 @@ export class PortalSystem extends createSystem({
     channel.onmessage = (event) => {
       if (event.data.type === 'SPAWN_MESSAGE') {
          this.spawnMessage(event.data.text || "Portal Message");
+      } else if (event.data.type === 'SPAWN_GRID') {
+         this.handleGridSpawn(event.data.items || []);
       }
     };
 
@@ -38,6 +40,38 @@ export class PortalSystem extends createSystem({
          }
        }
     });
+  }
+
+  private handleGridSpawn(items: any[]) {
+    // Clear existing grid items if we want a fresh start
+    // For now, let's just spawn what's new or all
+    for (const item of items) {
+      this.spawnGridItem(item);
+    }
+  }
+
+  private spawnGridItem(item: any) {
+    const cellSize = 1.0;
+    const gridOffset = -5 * cellSize; // Center a 10x10 grid
+    
+    // Convert grid row/col to 3D position
+    // Row increases towards South (+Z), Col increases towards East (+X)
+    const x = item.col * cellSize + gridOffset + cellSize/2;
+    const z = item.row * cellSize + gridOffset + cellSize/2;
+    const y = 0.05; // Slightly above floor
+
+    // For now, spawn a message label with the icon and type
+    // In a real app, we'd spawn specific 3D models.
+    const entity = this.world.createTransformEntity();
+    entity.addComponent(PanelUI, {
+      config: "/ui/message.json",
+      maxWidth: 0.5,
+      maxHeight: 0.25,
+    });
+    entity.object3D!.position.set(x, y, z);
+    
+    // Store text for readiness
+    this.pendingMessages.set(entity.index, `${item.icon} ${item.type}`);
   }
 
   spawnMessage(text: string) {

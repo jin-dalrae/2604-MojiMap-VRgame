@@ -28,6 +28,8 @@ import {
   RaycastSpace,
   TorusGeometry,
   MeshStandardMaterial,
+  GridHelper,
+  Color,
 } from "@iwsdk/core";
 
 import { BallSystem } from "./ball.js";
@@ -182,6 +184,27 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   const reticleMesh = new Mesh(reticleGeometry, reticleMaterial);
   world.createTransformEntity(reticleMesh)
     .addComponent(EnvironmentRaycastTarget, { space: RaycastSpace.Right });
+
+  // Grid Floor (Matching Portal Grid)
+  const gridSize = 10;
+  const gridHelper = new GridHelper(gridSize, gridSize, 0x6366f1, 0x27272a);
+  gridHelper.position.y = 0.01;
+  gridHelper.material.transparent = true;
+  gridHelper.material.opacity = 0.5;
+  world.createTransformEntity(gridHelper);
+
+  // Transparent Floor Plane for better collision/visibility
+  const floorGeom = new PlaneGeometry(gridSize, gridSize);
+  floorGeom.rotateX(-Math.PI / 2);
+  const floorMat = new MeshStandardMaterial({ 
+    color: 0x09090b, 
+    transparent: true, 
+    opacity: 0.2,
+    roughness: 1.0 
+  });
+  const floorMesh = new Mesh(floorGeom, floorMat);
+  world.createTransformEntity(floorMesh)
+    .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
 
   // Create some interactive physics balls
   const ballSystem = world.getSystem(BallSystem);
