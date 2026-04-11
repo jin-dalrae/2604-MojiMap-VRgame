@@ -21,50 +21,57 @@
         --cell-bg: #16161a;
         --cell-alt: #18181d;
         --cell-border: #222226;
-        --cell-size: 48px;
         --success: #10b981;
+        /* cell size: fit 10 cols + 9 gaps(2px) + 12px padding each side into viewport width */
+        --cell-size: clamp(28px, calc((100vw - 42px) / 10), 48px);
+      }
+
+      html, body {
+        height: 100%;
+        overflow: hidden;
       }
 
       body {
         background: var(--bg);
         color: var(--text);
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        height: 100vh;
         display: grid;
-        grid-template-rows: 48px 1fr 36px;
-        overflow: hidden;
+        grid-template-rows: 40px 1fr 88px 30px;
+        height: 100dvh;
       }
 
       /* ── Header ── */
       header {
         background: var(--surface);
         border-bottom: 1px solid var(--border);
-        padding: 0 16px;
+        padding: 0 12px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: 8px;
+        flex-shrink: 0;
       }
 
       header h1 {
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 600;
         color: var(--accent);
-        letter-spacing: 0.02em;
+        white-space: nowrap;
       }
 
-      .header-actions { display: flex; gap: 8px; align-items: center; }
+      .header-actions { display: flex; gap: 6px; align-items: center; }
 
       .btn {
-        padding: 6px 14px;
+        padding: 5px 11px;
         border: none;
         border-radius: 7px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
         cursor: pointer;
         transition: background 0.15s, transform 0.1s;
+        white-space: nowrap;
       }
-      .btn:active { transform: scale(0.97); }
+      .btn:active { transform: scale(0.96); }
       .btn-primary { background: var(--accent); color: white; }
       .btn-primary:hover { background: var(--accent-hover); }
       .btn-ghost {
@@ -72,51 +79,7 @@
         color: var(--muted);
         border: 1px solid var(--border);
       }
-      .btn-ghost:hover { color: var(--text); border-color: var(--border2); }
-
-      /* ── Main layout ── */
-      main {
-        display: grid;
-        grid-template-columns: 180px 1fr;
-        overflow: hidden;
-      }
-
-      /* ── Palette ── */
-      .palette {
-        background: var(--surface);
-        border-right: 1px solid var(--border);
-        overflow-y: auto;
-        padding: 10px 8px;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-
-      .palette::-webkit-scrollbar { width: 4px; }
-      .palette::-webkit-scrollbar-track { background: transparent; }
-      .palette::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-      .palette-section { font-size: 10px; color: var(--muted); text-transform: uppercase;
-        letter-spacing: 0.1em; padding: 8px 6px 4px; }
-      .palette-section:first-child { padding-top: 2px; }
-
-      .item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 7px 8px;
-        border-radius: 7px;
-        border: 1px solid transparent;
-        cursor: grab;
-        user-select: none;
-        transition: background 0.1s, border-color 0.1s;
-        font-size: 12px;
-        color: #d4d4d8;
-      }
-      .item:hover { background: var(--surface2); border-color: var(--border); }
-      .item:active { cursor: grabbing; }
-      .item.dragging-active { opacity: 0.4; }
-      .item-icon { font-size: 17px; flex-shrink: 0; }
+      .btn-ghost:hover { color: var(--text); }
 
       /* ── Grid area ── */
       .grid-area {
@@ -124,47 +87,37 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        overflow: auto;
-        padding: 20px;
-        gap: 12px;
-        position: relative;
+        overflow: hidden;
+        padding: 16px 12px 8px;
+        gap: 10px;
       }
 
       .grid-meta {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        align-self: flex-start;
-        font-size: 11px;
+        font-size: 10px;
         color: var(--muted);
-        margin-left: 2px;
+        align-self: flex-start;
       }
 
-      .view-hint { color: var(--border2); font-size: 10px; }
-
-      /* Grid board */
       .grid-board {
         position: relative;
         background: #0d0d10;
         border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 6px;
-        box-shadow: 0 0 0 1px #0005, 0 8px 32px rgba(0,0,0,0.6);
+        border-radius: 5px;
+        padding: 5px;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.5);
       }
 
-      /* Compass labels */
       .compass {
         position: absolute;
-        font-size: 9px;
+        font-size: 8px;
         color: #3f3f46;
-        font-weight: 500;
-        letter-spacing: 0.05em;
+        font-weight: 600;
         pointer-events: none;
       }
-      .compass-n { top: -16px; left: 50%; transform: translateX(-50%); }
-      .compass-s { bottom: -16px; left: 50%; transform: translateX(-50%); }
-      .compass-w { left: -18px; top: 50%; transform: translateY(-50%); }
-      .compass-e { right: -18px; top: 50%; transform: translateY(-50%); }
+      .compass-n { top: -13px; left: 50%; transform: translateX(-50%); }
+      .compass-s { bottom: -13px; left: 50%; transform: translateX(-50%); }
+      .compass-w { left: -14px; top: 50%; transform: translateY(-50%); }
+      .compass-e { right: -14px; top: 50%; transform: translateY(-50%); }
 
       .grid {
         display: grid;
@@ -178,64 +131,123 @@
         height: var(--cell-size);
         background: var(--cell-bg);
         border: 1px solid var(--cell-border);
-        border-radius: 3px;
+        border-radius: 2px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 22px;
+        font-size: calc(var(--cell-size) * 0.5);
         position: relative;
         transition: background 0.08s, border-color 0.08s;
-        cursor: default;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
       }
 
-      /* Checkerboard tint */
       .cell.alt { background: var(--cell-alt); }
 
-      .cell.drag-over {
+      .cell.drag-over,
+      .cell.tap-target {
         border-color: var(--accent) !important;
         background: var(--accent-dim) !important;
       }
 
-      .cell.occupied { cursor: grab; }
-      .cell.occupied:active { cursor: grabbing; }
+      .cell.occupied { cursor: pointer; }
 
       .cell .remove-x {
         display: none;
         position: absolute;
-        top: -5px;
-        right: -5px;
-        width: 14px;
-        height: 14px;
+        top: -4px;
+        right: -4px;
+        width: 12px;
+        height: 12px;
         background: #ef4444;
         border-radius: 50%;
-        font-size: 9px;
+        font-size: 8px;
         align-items: center;
         justify-content: center;
         color: white;
         cursor: pointer;
         z-index: 2;
-        line-height: 1;
         font-weight: 700;
+        line-height: 1;
       }
-
       .cell:hover .remove-x { display: flex; }
 
-      /* Drop zone highlight on drag entering grid */
-      .grid.accepting .cell:not(.occupied):hover {
-        background: var(--accent-dim);
-        border-color: var(--border2);
+      /* Show remove-x on touch-occupied cells too */
+      .cell.show-remove .remove-x { display: flex; }
+
+      /* ── Palette (bottom strip) ── */
+      .palette {
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        overflow-x: auto;
+        overflow-y: hidden;
+        display: flex;
+        align-items: center;
+        gap: 0;
+        padding: 0 8px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        flex-shrink: 0;
       }
+      .palette::-webkit-scrollbar { display: none; }
+
+      .palette-section {
+        font-size: 8px;
+        color: var(--border2);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 0 6px;
+        flex-shrink: 0;
+        writing-mode: horizontal-tb;
+      }
+
+      .palette-divider {
+        width: 1px;
+        height: 40px;
+        background: var(--border);
+        flex-shrink: 0;
+        margin: 0 4px;
+      }
+
+      .item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        padding: 6px 7px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        cursor: grab;
+        user-select: none;
+        flex-shrink: 0;
+        transition: background 0.1s, border-color 0.1s;
+        -webkit-tap-highlight-color: transparent;
+        min-width: 44px;
+        min-height: 60px;
+      }
+      .item:hover { background: var(--surface2); }
+      .item:active { cursor: grabbing; }
+      .item.dragging-active { opacity: 0.35; }
+      .item.selected {
+        background: var(--accent-dim);
+        border-color: var(--accent);
+      }
+      .item-icon { font-size: 20px; line-height: 1; }
+      .item-label { font-size: 8px; color: var(--muted); white-space: nowrap; }
+      .item.selected .item-label { color: #a5b4fc; }
 
       /* ── Footer ── */
       footer {
         background: var(--surface);
         border-top: 1px solid var(--border);
-        padding: 0 16px;
+        padding: 0 12px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        font-size: 11px;
+        font-size: 10px;
         color: var(--muted);
+        flex-shrink: 0;
       }
 
       .status-dot {
@@ -243,19 +255,80 @@
         width: 5px; height: 5px;
         background: var(--success);
         border-radius: 50%;
-        margin-right: 5px;
+        margin-right: 4px;
         vertical-align: middle;
       }
 
-      /* ── Custom drag image ── */
+      /* ── Drag ghost ── */
       #drag-ghost {
         position: fixed;
         pointer-events: none;
-        font-size: 26px;
+        font-size: 24px;
         z-index: 9999;
         transform: translate(-50%, -50%);
         opacity: 0.85;
         display: none;
+      }
+
+      /* ── Desktop: side-by-side layout ── */
+      @media (min-width: 640px) {
+        :root { --cell-size: 48px; }
+
+        body {
+          grid-template-rows: 48px 1fr 36px;
+          grid-template-columns: 1fr;
+          grid-template-areas:
+            "header"
+            "content"
+            "footer";
+        }
+
+        header { grid-area: header; }
+        .content-wrap { grid-area: content; display: grid; grid-template-columns: 160px 1fr; overflow: hidden; }
+        footer { grid-area: footer; }
+
+        .palette {
+          flex-direction: column;
+          overflow-x: hidden;
+          overflow-y: auto;
+          border-top: none;
+          border-right: 1px solid var(--border);
+          padding: 8px 6px;
+          gap: 2px;
+          height: 100%;
+          scrollbar-width: thin;
+          scrollbar-color: var(--border2) transparent;
+        }
+        .palette::-webkit-scrollbar { display: block; width: 4px; }
+        .palette::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+        .palette-section {
+          writing-mode: horizontal-tb;
+          font-size: 9px;
+          padding: 6px 4px 3px;
+          color: var(--muted);
+        }
+        .palette-divider { display: none; }
+
+        .item {
+          flex-direction: row;
+          justify-content: flex-start;
+          gap: 7px;
+          min-height: unset;
+          padding: 6px 8px;
+          border-radius: 6px;
+        }
+        .item-icon { font-size: 16px; }
+        .item-label { font-size: 11px; color: #d4d4d8; }
+        .item.selected .item-label { color: #a5b4fc; }
+
+        .grid-area { padding: 16px 20px; }
+
+        /* hide mobile palette strip on desktop */
+        body > .palette { display: none; }
+        .content-wrap .palette { display: flex; }
+        body > .grid-area { display: none; }
+        .content-wrap .grid-area { display: flex; }
       }
     </style>
   </head>
@@ -263,114 +336,222 @@
     <header>
       <h1>⬡ XR Grid Planner</h1>
       <div class="header-actions">
-        <button class="btn btn-ghost" id="clear-btn">Clear All</button>
-        <button class="btn btn-primary" id="transmit-btn">Transmit to Space</button>
+        <button class="btn btn-ghost" id="clear-btn">Clear</button>
+        <button class="btn btn-primary" id="transmit-btn">Transmit</button>
       </div>
     </header>
 
-    <main>
-      <!-- Item palette -->
-      <div class="palette" id="palette">
+    <!-- Mobile layout: grid area directly in body -->
+    <div class="grid-area" id="grid-area-mobile">
+      <div class="grid-meta">Birds Eye · 10×10 · tap item below then tap cell</div>
+      <div class="grid-board">
+        <span class="compass compass-n">N</span>
+        <span class="compass compass-s">S</span>
+        <span class="compass compass-w">W</span>
+        <span class="compass compass-e">E</span>
+        <div class="grid" id="grid-mobile"></div>
+      </div>
+    </div>
+
+    <!-- Mobile palette strip (bottom) -->
+    <div class="palette" id="palette-mobile">
+      <span class="palette-section">Prims</span>
+      <div class="item" data-type="cube"     data-icon="🟦" data-label="Cube">     <span class="item-icon">🟦</span><span class="item-label">Cube</span></div>
+      <div class="item" data-type="sphere"   data-icon="🔵" data-label="Sphere">   <span class="item-icon">🔵</span><span class="item-label">Sphere</span></div>
+      <div class="item" data-type="cylinder" data-icon="🟤" data-label="Cylinder"> <span class="item-icon">🟤</span><span class="item-label">Cylinder</span></div>
+      <div class="palette-divider"></div>
+      <span class="palette-section">Furn.</span>
+      <div class="item" data-type="chair"  data-icon="🪑" data-label="Chair">  <span class="item-icon">🪑</span><span class="item-label">Chair</span></div>
+      <div class="item" data-type="table"  data-icon="🪵" data-label="Table">  <span class="item-icon">🪵</span><span class="item-label">Table</span></div>
+      <div class="item" data-type="lamp"   data-icon="💡" data-label="Lamp">   <span class="item-icon">💡</span><span class="item-label">Lamp</span></div>
+      <div class="item" data-type="plant"  data-icon="🌿" data-label="Plant">  <span class="item-icon">🌿</span><span class="item-label">Plant</span></div>
+      <div class="item" data-type="screen" data-icon="🖥️" data-label="Screen"> <span class="item-icon">🖥️</span><span class="item-label">Screen</span></div>
+      <div class="palette-divider"></div>
+      <span class="palette-section">FX</span>
+      <div class="item" data-type="fire"   data-icon="🔥" data-label="Fire">   <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
+      <div class="item" data-type="portal" data-icon="🌀" data-label="Portal"> <span class="item-icon">🌀</span><span class="item-label">Portal</span></div>
+      <div class="item" data-type="star"   data-icon="⭐" data-label="Star">   <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
+      <div class="item" data-type="music"  data-icon="🎵" data-label="Music">  <span class="item-icon">🎵</span><span class="item-label">Music</span></div>
+      <div class="item" data-type="robot"  data-icon="🤖" data-label="Robot">  <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+    </div>
+
+    <!-- Desktop layout wrapper -->
+    <div class="content-wrap">
+      <div class="palette" id="palette-desktop">
         <div class="palette-section">Primitives</div>
-        <div class="item" draggable="true" data-type="cube"     data-icon="🟦" data-label="Cube">     <span class="item-icon">🟦</span>Cube</div>
-        <div class="item" draggable="true" data-type="sphere"   data-icon="🔵" data-label="Sphere">   <span class="item-icon">🔵</span>Sphere</div>
-        <div class="item" draggable="true" data-type="cylinder" data-icon="🟤" data-label="Cylinder"> <span class="item-icon">🟤</span>Cylinder</div>
-
+        <div class="item" data-type="cube"     data-icon="🟦" data-label="Cube">     <span class="item-icon">🟦</span><span class="item-label">Cube</span></div>
+        <div class="item" data-type="sphere"   data-icon="🔵" data-label="Sphere">   <span class="item-icon">🔵</span><span class="item-label">Sphere</span></div>
+        <div class="item" data-type="cylinder" data-icon="🟤" data-label="Cylinder"> <span class="item-icon">🟤</span><span class="item-label">Cylinder</span></div>
         <div class="palette-section">Furniture</div>
-        <div class="item" draggable="true" data-type="chair"    data-icon="🪑" data-label="Chair">    <span class="item-icon">🪑</span>Chair</div>
-        <div class="item" draggable="true" data-type="table"    data-icon="🪵" data-label="Table">    <span class="item-icon">🪵</span>Table</div>
-        <div class="item" draggable="true" data-type="lamp"     data-icon="💡" data-label="Lamp">     <span class="item-icon">💡</span>Lamp</div>
-        <div class="item" draggable="true" data-type="plant"    data-icon="🌿" data-label="Plant">    <span class="item-icon">🌿</span>Plant</div>
-        <div class="item" draggable="true" data-type="screen"   data-icon="🖥️" data-label="Screen">   <span class="item-icon">🖥️</span>Screen</div>
-
+        <div class="item" data-type="chair"  data-icon="🪑" data-label="Chair">  <span class="item-icon">🪑</span><span class="item-label">Chair</span></div>
+        <div class="item" data-type="table"  data-icon="🪵" data-label="Table">  <span class="item-icon">🪵</span><span class="item-label">Table</span></div>
+        <div class="item" data-type="lamp"   data-icon="💡" data-label="Lamp">   <span class="item-icon">💡</span><span class="item-label">Lamp</span></div>
+        <div class="item" data-type="plant"  data-icon="🌿" data-label="Plant">  <span class="item-icon">🌿</span><span class="item-label">Plant</span></div>
+        <div class="item" data-type="screen" data-icon="🖥️" data-label="Screen"> <span class="item-icon">🖥️</span><span class="item-label">Screen</span></div>
         <div class="palette-section">Effects</div>
-        <div class="item" draggable="true" data-type="fire"     data-icon="🔥" data-label="Fire">     <span class="item-icon">🔥</span>Fire</div>
-        <div class="item" draggable="true" data-type="portal"   data-icon="🌀" data-label="Portal">   <span class="item-icon">🌀</span>Portal</div>
-        <div class="item" draggable="true" data-type="star"     data-icon="⭐" data-label="Star">     <span class="item-icon">⭐</span>Star</div>
-        <div class="item" draggable="true" data-type="music"    data-icon="🎵" data-label="Music">    <span class="item-icon">🎵</span>Music</div>
-        <div class="item" draggable="true" data-type="robot"    data-icon="🤖" data-label="Robot">    <span class="item-icon">🤖</span>Robot</div>
+        <div class="item" data-type="fire"   data-icon="🔥" data-label="Fire">   <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
+        <div class="item" data-type="portal" data-icon="🌀" data-label="Portal"> <span class="item-icon">🌀</span><span class="item-label">Portal</span></div>
+        <div class="item" data-type="star"   data-icon="⭐" data-label="Star">   <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
+        <div class="item" data-type="music"  data-icon="🎵" data-label="Music">  <span class="item-icon">🎵</span><span class="item-label">Music</span></div>
+        <div class="item" data-type="robot"  data-icon="🤖" data-label="Robot">  <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
       </div>
 
-      <!-- Grid area -->
-      <div class="grid-area">
-        <div class="grid-meta">
-          <span>Birds Eye · 10×10</span>
-          <span class="view-hint">drag items onto grid · click × to remove · drag to reposition</span>
-        </div>
-
+      <div class="grid-area" id="grid-area-desktop">
+        <div class="grid-meta">Birds Eye · 10×10 · drag or tap to place</div>
         <div class="grid-board">
           <span class="compass compass-n">N</span>
           <span class="compass compass-s">S</span>
           <span class="compass compass-w">W</span>
           <span class="compass compass-e">E</span>
-          <div class="grid" id="grid"></div>
+          <div class="grid" id="grid-desktop"></div>
         </div>
       </div>
-    </main>
+    </div>
 
     <footer>
-      <span><span class="status-dot"></span>BroadcastChannel connected</span>
-      <span id="item-count">0 items placed</span>
+      <span><span class="status-dot"></span>BroadcastChannel</span>
+      <span id="item-count">0 items</span>
     </footer>
 
     <div id="drag-ghost"></div>
 
     <script>
       const COLS = 10, ROWS = 10;
-      const gridEl = document.getElementById('grid');
-      const ghost  = document.getElementById('drag-ghost');
       const channel = new BroadcastChannel('xr-portal');
 
-      // Grid state: flat map "r,c" -> {type, icon, label}
-      const state = new Map();
+      // Detect active grid based on viewport
+      function isMobile() { return window.innerWidth < 640; }
 
-      let dragging = null;           // item being dragged
-      let fromCell = null;           // "r,c" key if source is a grid cell
+      function activeGrid() {
+        return isMobile()
+          ? document.getElementById('grid-mobile')
+          : document.getElementById('grid-desktop');
+      }
 
-      // ── Build grid ──────────────────────────────────────────
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          const cell = document.createElement('div');
-          cell.className = 'cell' + ((r + c) % 2 === 1 ? ' alt' : '');
-          cell.dataset.r = r;
-          cell.dataset.c = c;
+      // Shared state
+      const state = new Map(); // "r,c" -> {type, icon, label}
+      let dragging = null;
+      let fromCell = null;
+      let selectedItem = null; // for tap-to-place
 
-          cell.addEventListener('dragover', onCellDragOver);
-          cell.addEventListener('dragleave', onCellDragLeave);
-          cell.addEventListener('drop', onCellDrop);
+      // ── Build both grids ─────────────────────────────────────
+      ['grid-mobile', 'grid-desktop'].forEach(gridId => {
+        const gridEl = document.getElementById(gridId);
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell' + ((r + c) % 2 === 1 ? ' alt' : '');
+            cell.dataset.r = r;
+            cell.dataset.c = c;
+            cell.addEventListener('dragover', onCellDragOver);
+            cell.addEventListener('dragleave', onCellDragLeave);
+            cell.addEventListener('drop', onCellDrop);
+            cell.addEventListener('click', onCellClick);
+            gridEl.appendChild(cell);
+          }
+        }
+      });
 
-          gridEl.appendChild(cell);
+      // Sync grids: whenever state changes, rerender both
+      function syncGrids() {
+        ['grid-mobile', 'grid-desktop'].forEach(gridId => {
+          const gridEl = document.getElementById(gridId);
+          gridEl.querySelectorAll('.cell').forEach(cell => {
+            const key = `${cell.dataset.r},${cell.dataset.c}`;
+            const item = state.get(key);
+            // Clear first
+            cell.classList.remove('occupied');
+            cell.removeAttribute('draggable');
+            if (cell._dragStart) { cell.removeEventListener('dragstart', cell._dragStart); cell._dragStart = null; }
+            if (cell._dragEnd)   { cell.removeEventListener('dragend',   cell._dragEnd);   cell._dragEnd = null; }
+            cell.innerHTML = '';
+            if (item) {
+              cell.classList.add('occupied');
+              const icon = document.createElement('span');
+              icon.textContent = item.icon;
+              icon.title = item.label;
+              const x = document.createElement('div');
+              x.className = 'remove-x';
+              x.textContent = '×';
+              const capturedKey = key;
+              x.addEventListener('click', (e) => { e.stopPropagation(); clearCell(capturedKey); });
+              cell.appendChild(icon);
+              cell.appendChild(x);
+              makeCellDraggable(cell, key);
+            }
+            // Highlight tap target cells
+            if (selectedItem && !item) {
+              cell.classList.add('tap-target');
+            } else {
+              cell.classList.remove('tap-target');
+            }
+          });
+        });
+        updateCount();
+      }
+
+      // ── Tap to select / place ────────────────────────────────
+      function onCellClick(e) {
+        if (e.target.classList.contains('remove-x')) return;
+        const r = parseInt(this.dataset.r);
+        const c = parseInt(this.dataset.c);
+        const key = `${r},${c}`;
+
+        if (state.has(key)) {
+          // Toggle remove highlight on touch
+          this.classList.toggle('show-remove');
+          return;
+        }
+
+        if (selectedItem) {
+          placeItem(key, selectedItem);
         }
       }
 
-      // ── Palette drag start ───────────────────────────────────
+      // ── Palette setup ────────────────────────────────────────
       document.querySelectorAll('.item').forEach(el => {
+        // Drag (desktop)
+        el.setAttribute('draggable', 'true');
         el.addEventListener('dragstart', (e) => {
           dragging = { type: el.dataset.type, icon: el.dataset.icon, label: el.dataset.label };
           fromCell = null;
           el.classList.add('dragging-active');
-          gridEl.classList.add('accepting');
+          activeGrid().classList.add('accepting');
           showGhost(el.dataset.icon, e);
           e.dataTransfer.effectAllowed = 'copy';
-          e.dataTransfer.setDragImage(new Image(), 0, 0); // hide native ghost
+          e.dataTransfer.setDragImage(new Image(), 0, 0);
         });
         el.addEventListener('dragend', () => {
           el.classList.remove('dragging-active');
           endDrag();
         });
+
+        // Tap (mobile)
+        el.addEventListener('click', () => {
+          const data = { type: el.dataset.type, icon: el.dataset.icon, label: el.dataset.label };
+          if (selectedItem && selectedItem.type === data.type) {
+            // Deselect
+            selectedItem = null;
+            document.querySelectorAll('.item').forEach(i => i.classList.remove('selected'));
+          } else {
+            selectedItem = data;
+            document.querySelectorAll('.item').forEach(i => i.classList.remove('selected'));
+            document.querySelectorAll(`.item[data-type="${data.type}"]`).forEach(i => i.classList.add('selected'));
+          }
+          syncGrids();
+        });
       });
 
-      // ── Ghost follow cursor ──────────────────────────────────
+      // ── Ghost ────────────────────────────────────────────────
+      const ghost = document.getElementById('drag-ghost');
+
       function showGhost(icon, e) {
         ghost.textContent = icon;
         ghost.style.display = 'block';
         moveGhost(e);
       }
 
-      document.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        moveGhost(e);
-      });
+      document.addEventListener('dragover', (e) => { e.preventDefault(); moveGhost(e); });
 
       function moveGhost(e) {
         ghost.style.left = e.clientX + 'px';
@@ -379,7 +560,7 @@
 
       function endDrag() {
         ghost.style.display = 'none';
-        gridEl.classList.remove('accepting');
+        document.querySelectorAll('.grid').forEach(g => g.classList.remove('accepting'));
         dragging = null;
         fromCell = null;
       }
@@ -391,36 +572,24 @@
         e.dataTransfer.dropEffect = fromCell ? 'move' : 'copy';
       }
 
-      function onCellDragLeave() {
-        this.classList.remove('drag-over');
-      }
+      function onCellDragLeave() { this.classList.remove('drag-over'); }
 
       function onCellDrop(e) {
         e.preventDefault();
         this.classList.remove('drag-over');
         if (!dragging) return;
-
-        const r = parseInt(this.dataset.r);
-        const c = parseInt(this.dataset.c);
-        const key = `${r},${c}`;
-
-        // If moving from another cell, clear it first
-        if (fromCell && fromCell !== key) {
-          clearCell(fromCell);
-        }
-
+        const key = `${this.dataset.r},${this.dataset.c}`;
+        if (fromCell && fromCell !== key) clearCell(fromCell);
         placeItem(key, dragging);
         endDrag();
       }
 
-      // ── Cell content drag (reposition) ──────────────────────
-      function makeCellDraggable(key) {
-        const cell = getCell(key);
+      function makeCellDraggable(cell, key) {
         cell.setAttribute('draggable', 'true');
         cell._dragStart = (e) => {
           dragging = state.get(key);
           fromCell = key;
-          gridEl.classList.add('accepting');
+          activeGrid().classList.add('accepting');
           showGhost(dragging.icon, e);
           e.dataTransfer.effectAllowed = 'move';
           e.dataTransfer.setDragImage(new Image(), 0, 0);
@@ -430,56 +599,29 @@
         cell.addEventListener('dragend', cell._dragEnd);
       }
 
-      // ── Place / clear helpers ────────────────────────────────
+      // ── State helpers ────────────────────────────────────────
       function placeItem(key, item) {
-        clearCell(key); // ensure clean slot
         state.set(key, item);
-
-        const cell = getCell(key);
-        cell.classList.add('occupied');
-
-        const icon = document.createElement('span');
-        icon.textContent = item.icon;
-        icon.title = item.label;
-
-        const x = document.createElement('div');
-        x.className = 'remove-x';
-        x.textContent = '×';
-        x.addEventListener('click', (e) => { e.stopPropagation(); clearCell(key); });
-
-        cell.appendChild(icon);
-        cell.appendChild(x);
-        makeCellDraggable(key);
-        updateCount();
+        syncGrids();
       }
 
       function clearCell(key) {
         if (!state.has(key)) return;
         state.delete(key);
-
-        const cell = getCell(key);
-        cell.classList.remove('occupied');
-        cell.removeAttribute('draggable');
-        if (cell._dragStart) { cell.removeEventListener('dragstart', cell._dragStart); cell._dragStart = null; }
-        if (cell._dragEnd)   { cell.removeEventListener('dragend',   cell._dragEnd);   cell._dragEnd = null; }
-        cell.innerHTML = '';
-        updateCount();
-      }
-
-      function getCell(key) {
-        const [r, c] = key.split(',');
-        return gridEl.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+        syncGrids();
       }
 
       function updateCount() {
         const n = state.size;
-        document.getElementById('item-count').textContent =
-          n === 0 ? '0 items placed' : `${n} item${n !== 1 ? 's' : ''} placed`;
+        document.getElementById('item-count').textContent = `${n} item${n !== 1 ? 's' : ''}`;
       }
 
       // ── Clear all ────────────────────────────────────────────
       document.getElementById('clear-btn').addEventListener('click', () => {
-        for (const key of [...state.keys()]) clearCell(key);
+        state.clear();
+        selectedItem = null;
+        document.querySelectorAll('.item').forEach(i => i.classList.remove('selected'));
+        syncGrids();
       });
 
       // ── Transmit ─────────────────────────────────────────────
@@ -492,13 +634,13 @@
         channel.postMessage({ type: 'SPAWN_GRID', items });
 
         const btn = document.getElementById('transmit-btn');
-        btn.textContent = 'Transmitted!';
+        btn.textContent = '✓ Sent!';
         btn.style.background = '#10b981';
-        setTimeout(() => {
-          btn.textContent = 'Transmit to Space';
-          btn.style.background = '';
-        }, 1500);
+        setTimeout(() => { btn.textContent = 'Transmit'; btn.style.background = ''; }, 1500);
       });
+
+      // Initial render
+      syncGrids();
     </script>
   </body>
 </html>
