@@ -1,14 +1,18 @@
 import {
   Mesh,
   MeshBasicMaterial,
-  GridHelper,
   PlaneGeometry,
   SphereGeometry,
+  ConeGeometry,
   World,
   Vector3,
   Sprite,
   SpriteMaterial,
   CanvasTexture,
+  LineSegments,
+  LineBasicMaterial,
+  BufferGeometry,
+  Float32BufferAttribute,
 } from "@iwsdk/core";
 
 async function init() {
@@ -23,36 +27,38 @@ async function init() {
     },
   });
 
-  const { camera } = world;
+  const { scene, camera } = world;
+  scene.fog = null;
 
-  // ── Grid Floor (20×20 to match portal grid) ────────────────
-  const gridHelper = new GridHelper(20, 20, 0x6366f1, 0x27272a);
-  (gridHelper.material as any).transparent = true;
-  (gridHelper.material as any).opacity = 0.7;
-  world.createTransformEntity(gridHelper);
+  // ── Grid Floor (20 cols × 10 rows, 1m square cells) ──────────
+  function makeRectGrid(cols: number, rows: number, cell = 1): LineSegments {
+    const halfW = (cols * cell) / 2;
+    const halfD = (rows * cell) / 2;
+    const verts: number[] = [];
+    for (let i = 0; i <= cols; i++) {
+      const x = -halfW + i * cell;
+      verts.push(x, 0, -halfD, x, 0, halfD);
+    }
+    for (let j = 0; j <= rows; j++) {
+      const z = -halfD + j * cell;
+      verts.push(-halfW, 0, z, halfW, 0, z);
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute('position', new Float32BufferAttribute(verts, 3));
+    const mat = new LineBasicMaterial({ color: 0x8b8fa8 });
+    return new LineSegments(geo, mat);
+  }
+  const gridLines = makeRectGrid(20, 10, 1);
+  gridLines.position.y = 0.002;
+  world.createTransformEntity(gridLines);
 
-  const floorGeom = new PlaneGeometry(20, 20);
+  // Opaque floor plane — darker than grid lines so lines stay visible.
+  const floorGeom = new PlaneGeometry(20, 10);
   floorGeom.rotateX(-Math.PI / 2);
-  const floorMat = new MeshBasicMaterial({
-    color: 0x0d0d10,
-    transparent: true,
-    opacity: 0.6,
-  });
+  const floorMat = new MeshBasicMaterial({ color: 0x3f3f52 });
   const floorMesh = new Mesh(floorGeom, floorMat);
-  floorMesh.position.y = -0.001;
+  floorMesh.position.y = 0;
   world.createTransformEntity(floorMesh);
-
-  // Subtle portal-grid outline (10 rows × 20 cols = 10m × 20m centered)
-  const outlineGeom = new PlaneGeometry(20, 10);
-  outlineGeom.rotateX(-Math.PI / 2);
-  const outlineMat = new MeshBasicMaterial({
-    color: 0x6366f1,
-    transparent: true,
-    opacity: 0.04,
-  });
-  const outlineMesh = new Mesh(outlineGeom, outlineMat);
-  outlineMesh.position.y = 0.002;
-  world.createTransformEntity(outlineMesh);
 
   // ── Camera orbit ───────────────────────────────────────────
   let alpha = Math.PI / 2;     // horizontal rotation (look from +Z toward origin)
@@ -95,44 +101,107 @@ async function init() {
     canvas.width = 128;
     canvas.height = 128;
     const ctx = canvas.getContext('2d')!;
-    ctx.font = '96px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+
+    ctx.font = '108px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(emoji, 64, 72);
+    ctx.fillText(emoji, 64, 70);
 
     const texture = new CanvasTexture(canvas);
     texture.needsUpdate = true;
     const material = new SpriteMaterial({
       map: texture,
       transparent: true,
-      depthWrite: false,
+      alphaTest: 0.1,
+      depthWrite: true,
     });
     const sprite = new Sprite(material);
     sprite.scale.set(size, size, 1);
     return sprite;
   }
 
-  // ── Player marker ──────────────────────────────────────────
-  const playerGeom = new SphereGeometry(0.2, 16, 16);
-  const playerMat = new MeshBasicMaterial({ color: 0x6366f1 });
-  const playerMesh = new Mesh(playerGeom, playerMat);
-  playerMesh.position.set(0, 0.2, 0);
-  playerMesh.visible = false;
-  const playerLabel = makeEmojiSprite('🧑', 0.8);
-  playerLabel.position.y = 0.9;
-  playerMesh.add(playerLabel);
-  world.createTransformEntity(playerMesh);
+  // ── Per-user player marker factory ────────────────────────
+  // Each connected VR user gets a sphere + emoji head + ring + facing cone,
+  // all parented under a single entity so position/heading sync is cheap.
+  type PlayerMarker = {
+    entity: ReturnType<typeof world.createTransformEntity>;
+    root: Mesh;
+    headingPivot: Mesh;
+  };
 
-  // Glowing ring under player
-  const ringGeom = new PlaneGeometry(0.9, 0.9);
-  ringGeom.rotateX(-Math.PI / 2);
-  const ringMat = new MeshBasicMaterial({
-    color: 0x6366f1, transparent: true, opacity: 0.35, depthWrite: false,
-  });
-  const ringMesh = new Mesh(ringGeom, ringMat);
-  ringMesh.visible = false;
-  playerMesh.add(ringMesh);
-  ringMesh.position.y = -0.19;
+  const USER_COLORS = [
+    0x6366f1, 0xec4899, 0xf59e0b, 0x10b981,
+    0x3b82f6, 0xef4444, 0xa855f7, 0x14b8a6,
+  ];
+  // Shared cone geometry so new users don't re-allocate it.
+  const sharedConeGeom = new ConeGeometry(0.9, 1.6, 24, 1, true);
+  sharedConeGeom.rotateX(-Math.PI / 2);
+  sharedConeGeom.translate(0, 0, 0.8);
+
+  function colorForUser(userId: string): number {
+    let h = 0;
+    for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) | 0;
+    return USER_COLORS[Math.abs(h) % USER_COLORS.length];
+  }
+
+  function createPlayerMarker(userId: string): PlayerMarker {
+    const color = colorForUser(userId);
+
+    const root = new Mesh(
+      new SphereGeometry(0.2, 16, 16),
+      new MeshBasicMaterial({ color }),
+    );
+    root.position.set(0, 0.2, 0);
+
+    const label = makeEmojiSprite('🧑', 0.8);
+    label.position.y = 0.9;
+    root.add(label);
+
+    const ring = new Mesh(
+      new PlaneGeometry(0.9, 0.9).rotateX(-Math.PI / 2),
+      new MeshBasicMaterial({ color, transparent: true, opacity: 0.35, depthWrite: false }),
+    );
+    ring.position.y = -0.19;
+    root.add(ring);
+
+    const headingPivot = new Mesh(
+      new PlaneGeometry(0, 0),
+      new MeshBasicMaterial({ visible: false }),
+    );
+    root.add(headingPivot);
+
+    const cone = new Mesh(
+      sharedConeGeom,
+      new MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.35,
+        depthWrite: false,
+        side: 2, // DoubleSide
+      }),
+    );
+    cone.position.y = 0.9;
+    headingPivot.add(cone);
+
+    const entity = world.createTransformEntity(root);
+    return { entity, root, headingPivot };
+  }
+
+  function disposePlayerMarker(m: PlayerMarker) {
+    // Recursively dispose per-marker materials/geometries (except shared cone).
+    m.root.traverse((obj: any) => {
+      if (obj === m.headingPivot) return;
+      if (obj.geometry && obj.geometry !== sharedConeGeom) obj.geometry.dispose?.();
+      if (obj.material) {
+        const mat = obj.material;
+        if (mat.map) mat.map.dispose?.();
+        mat.dispose?.();
+      }
+    });
+    m.entity.dispose();
+  }
+
+  const players = new Map<string, PlayerMarker>();
 
   // ── Grid item tracking ─────────────────────────────────────
   const spawnedSprites = new Map<string, Sprite>();
@@ -178,12 +247,17 @@ async function init() {
       try { msg = JSON.parse(e.data); } catch { return; }
 
       switch (msg.type) {
-        case 'INIT':
+        case 'WELCOME':
+          // Full state snapshot: grid + everyone currently present.
           for (const key of [...spawnedSprites.keys()]) despawnGridItem(key);
           for (const [key, item] of Object.entries(msg.grid as Record<string, any>)) {
             spawnGridItem(key, item);
           }
-          if (msg.playerPosition) updatePlayerPosition(msg.playerPosition);
+          for (const [, marker] of players) disposePlayerMarker(marker);
+          players.clear();
+          for (const [userId, user] of Object.entries(msg.users as Record<string, any>)) {
+            updatePlayerMarker(userId, user.position);
+          }
           break;
         case 'GRID_UPDATE':
           spawnGridItem(msg.key, msg.item);
@@ -194,18 +268,35 @@ async function init() {
         case 'GRID_CLEAR_ALL':
           for (const key of [...spawnedSprites.keys()]) despawnGridItem(key);
           break;
+        case 'USER_JOIN':
+          updatePlayerMarker(msg.userId, msg.position);
+          break;
+        case 'USER_LEAVE': {
+          const m = players.get(msg.userId);
+          if (m) { disposePlayerMarker(m); players.delete(msg.userId); }
+          break;
+        }
         case 'PLAYER_POSITION':
-          updatePlayerPosition(msg.position);
+          updatePlayerMarker(msg.userId, msg.position);
           break;
       }
     };
   }
 
-  function updatePlayerPosition(pos: { x: number; z: number }) {
-    playerMesh.visible = true;
-    ringMesh.visible = true;
-    playerMesh.position.x = pos.x;
-    playerMesh.position.z = pos.z;
+  function updatePlayerMarker(
+    userId: string,
+    pos: { x: number; z: number; heading?: number },
+  ) {
+    let marker = players.get(userId);
+    if (!marker) {
+      marker = createPlayerMarker(userId);
+      players.set(userId, marker);
+    }
+    marker.root.position.x = pos.x;
+    marker.root.position.z = pos.z;
+    if (typeof pos.heading === 'number') {
+      marker.headingPivot.rotation.y = pos.heading;
+    }
   }
 
   connectWS();

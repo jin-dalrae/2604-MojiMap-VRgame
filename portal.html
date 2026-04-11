@@ -248,20 +248,48 @@
         vertical-align: middle;
       }
 
-      /* ── Player dot ── */
+      /* ── Player presence layer (one dot + cone per user) ── */
+      .players-layer {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 9;
+      }
       .player-dot {
         position: absolute;
         width: 11px;
         height: 11px;
-        background: #6366f1;
+        background: var(--pcolor, #6366f1);
         border: 2px solid #fff;
         border-radius: 50%;
         transform: translate(-50%, -50%);
         pointer-events: none;
-        z-index: 10;
-        box-shadow: 0 0 0 2px rgba(99,102,241,0.4), 0 0 8px rgba(99,102,241,0.6);
+        z-index: 2;
+        box-shadow: 0 0 0 2px var(--pcolor-soft, rgba(99,102,241,0.4)),
+                    0 0 8px var(--pcolor-glow, rgba(99,102,241,0.6));
         transition: left 0.1s, top 0.1s;
-        display: none;
+      }
+      .player-cone {
+        position: absolute;
+        width: 0;
+        height: 0;
+        pointer-events: none;
+        z-index: 1;
+        transition: left 0.1s, top 0.1s, transform 0.1s;
+      }
+      .player-cone::before {
+        content: '';
+        position: absolute;
+        width: 120px;
+        height: 120px;
+        left: -60px;
+        top: 0;
+        background: linear-gradient(
+          180deg,
+          var(--pcolor-cone-near, rgba(99,102,241,0.55)) 0%,
+          var(--pcolor-cone-far, rgba(99,102,241,0.08)) 100%
+        );
+        clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
       }
 
       /* ── Drag ghost ── */
@@ -350,7 +378,7 @@
         <span class="compass compass-w">W</span>
         <span class="compass compass-e">E</span>
         <div class="grid" id="grid-mobile"></div>
-        <div class="player-dot" id="dot-mobile"></div>
+        <div class="players-layer" id="players-mobile"></div>
       </div>
     </div>
 
@@ -405,7 +433,7 @@
           <span class="compass compass-w">W</span>
           <span class="compass compass-e">E</span>
           <div class="grid" id="grid-desktop"></div>
-          <div class="player-dot" id="dot-desktop"></div>
+          <div class="players-layer" id="players-desktop"></div>
         </div>
       </div>
     </div>
@@ -457,13 +485,18 @@
           try { msg = JSON.parse(e.data); } catch { return; }
 
           switch (msg.type) {
-            case 'INIT':
+            case 'WELCOME':
+              myUserId = msg.userId;
               state.clear();
               for (const [key, item] of Object.entries(msg.grid)) {
                 state.set(key, item);
               }
               syncGrids();
-              if (msg.playerPosition) updatePlayerDot(msg.playerPosition);
+              // Clear any stale markers then rebuild from the snapshot.
+              for (const userId of [...players.keys()]) removePlayer(userId);
+              for (const [userId, user] of Object.entries(msg.users || {})) {
+                updatePlayer(userId, user.position);
+              }
               break;
 
             case 'GRID_UPDATE':
@@ -481,8 +514,16 @@
               syncGrids();
               break;
 
+            case 'USER_JOIN':
+              updatePlayer(msg.userId, msg.position);
+              break;
+
+            case 'USER_LEAVE':
+              removePlayer(msg.userId);
+              break;
+
             case 'PLAYER_POSITION':
-              updatePlayerDot(msg.position);
+              updatePlayer(msg.userId, msg.position);
               break;
           }
         };
@@ -490,15 +531,79 @@
 
       connectWS();
 
-      // ── Player dot ───────────────────────────────────────────
+      // ── Multi-user presence ─────────────────────────────────
       // VR world: col c → x = c - 9.5, row r → z = r - 4.5
       // Inverse:  col = x + 9.5, row = z + 4.5
-      function updatePlayerDot(pos) {
+      // Heading: atan2(fwd.x, fwd.z) in world. heading=0 → fwd=+z (screen down),
+      //          heading=π/2 → +x (screen right), heading=π → -z (screen up).
+      //          CSS rotation (cw from default down-pointing cone) = heading rad → deg.
+
+      let myUserId = null;
+      // userId -> { mobile: { dot, cone }, desktop: { dot, cone } }
+      const players = new Map();
+
+      const PALETTE = [
+        { solid: '#6366f1', soft: 'rgba(99,102,241,0.4)',  glow: 'rgba(99,102,241,0.6)',  near: 'rgba(99,102,241,0.55)', far: 'rgba(99,102,241,0.08)' },
+        { solid: '#ec4899', soft: 'rgba(236,72,153,0.4)',  glow: 'rgba(236,72,153,0.6)',  near: 'rgba(236,72,153,0.55)', far: 'rgba(236,72,153,0.08)' },
+        { solid: '#f59e0b', soft: 'rgba(245,158,11,0.4)',  glow: 'rgba(245,158,11,0.6)',  near: 'rgba(245,158,11,0.55)', far: 'rgba(245,158,11,0.08)' },
+        { solid: '#10b981', soft: 'rgba(16,185,129,0.4)',  glow: 'rgba(16,185,129,0.6)',  near: 'rgba(16,185,129,0.55)', far: 'rgba(16,185,129,0.08)' },
+        { solid: '#3b82f6', soft: 'rgba(59,130,246,0.4)',  glow: 'rgba(59,130,246,0.6)',  near: 'rgba(59,130,246,0.55)', far: 'rgba(59,130,246,0.08)' },
+        { solid: '#ef4444', soft: 'rgba(239,68,68,0.4)',   glow: 'rgba(239,68,68,0.6)',   near: 'rgba(239,68,68,0.55)',  far: 'rgba(239,68,68,0.08)'  },
+        { solid: '#a855f7', soft: 'rgba(168,85,247,0.4)',  glow: 'rgba(168,85,247,0.6)',  near: 'rgba(168,85,247,0.55)', far: 'rgba(168,85,247,0.08)' },
+        { solid: '#14b8a6', soft: 'rgba(20,184,166,0.4)',  glow: 'rgba(20,184,166,0.6)',  near: 'rgba(20,184,166,0.55)', far: 'rgba(20,184,166,0.08)' },
+      ];
+      function colorForUser(id) {
+        let h = 0;
+        for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+        return PALETTE[Math.abs(h) % PALETTE.length];
+      }
+
+      function ensurePlayer(userId) {
+        let entry = players.get(userId);
+        if (entry) return entry;
+        const color = colorForUser(userId);
+        entry = { mobile: null, desktop: null };
+        for (const suffix of ['mobile', 'desktop']) {
+          const layer = document.getElementById('players-' + suffix);
+          if (!layer) continue;
+          const cone = document.createElement('div');
+          cone.className = 'player-cone';
+          const dot = document.createElement('div');
+          dot.className = 'player-dot';
+          [dot, cone].forEach(el => {
+            el.style.setProperty('--pcolor', color.solid);
+            el.style.setProperty('--pcolor-soft', color.soft);
+            el.style.setProperty('--pcolor-glow', color.glow);
+            el.style.setProperty('--pcolor-cone-near', color.near);
+            el.style.setProperty('--pcolor-cone-far', color.far);
+          });
+          layer.appendChild(cone);
+          layer.appendChild(dot);
+          entry[suffix] = { dot, cone };
+        }
+        players.set(userId, entry);
+        return entry;
+      }
+
+      function removePlayer(userId) {
+        const entry = players.get(userId);
+        if (!entry) return;
+        for (const suffix of ['mobile', 'desktop']) {
+          const s = entry[suffix];
+          if (s) { s.dot.remove(); s.cone.remove(); }
+        }
+        players.delete(userId);
+      }
+
+      function updatePlayer(userId, pos) {
+        if (!pos) return;
+        const entry = ensurePlayer(userId);
         ['grid-mobile', 'grid-desktop'].forEach(gridId => {
+          const suffix = gridId === 'grid-mobile' ? 'mobile' : 'desktop';
+          const s = entry[suffix];
+          if (!s) return;
           const gridEl = document.getElementById(gridId);
-          const dotId = gridId === 'grid-mobile' ? 'dot-mobile' : 'dot-desktop';
-          const dot = document.getElementById(dotId);
-          if (!gridEl || !dot) return;
+          if (!gridEl) return;
 
           const c00 = gridEl.querySelector('[data-r="0"][data-c="0"]');
           const c01 = gridEl.querySelector('[data-r="0"][data-c="1"]');
@@ -516,15 +621,21 @@
           const gapX = r01.left - r00.right;
           const gapY = r10.top  - r00.bottom;
 
-          const col = pos.x + 9.5; // float col
-          const row = pos.z + 4.5; // float row
+          const col = pos.x + 9.5;
+          const row = pos.z + 4.5;
 
           const px = (r00.left - boardRect.left) + col * (cellW + gapX) + cellW / 2;
           const py = (r00.top  - boardRect.top)  + row * (cellH + gapY) + cellH / 2;
 
-          dot.style.display = 'block';
-          dot.style.left = px + 'px';
-          dot.style.top  = py + 'px';
+          s.dot.style.left = px + 'px';
+          s.dot.style.top  = py + 'px';
+
+          if (typeof pos.heading === 'number') {
+            const deg = pos.heading * 180 / Math.PI;
+            s.cone.style.left = px + 'px';
+            s.cone.style.top  = py + 'px';
+            s.cone.style.transform = `rotate(${deg}deg)`;
+          }
         });
       }
 

@@ -28,8 +28,11 @@ import {
   RaycastSpace,
   TorusGeometry,
   MeshStandardMaterial,
-  GridHelper,
   Color,
+  LineSegments,
+  LineBasicMaterial,
+  BufferGeometry,
+  Float32BufferAttribute,
 } from "@iwsdk/core";
 
 import { BallSystem } from "./ball.js";
@@ -185,16 +188,30 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   world.createTransformEntity(reticleMesh)
     .addComponent(EnvironmentRaycastTarget, { space: RaycastSpace.Right });
 
-  // Grid Floor (Matching Portal Grid — 20 cols × 10 rows, 1m cells)
-  const gridSize = 20;
-  const gridHelper = new GridHelper(gridSize, gridSize, 0x6366f1, 0x27272a);
-  gridHelper.position.y = 0.01;
-  gridHelper.material.transparent = true;
-  gridHelper.material.opacity = 0.5;
-  world.createTransformEntity(gridHelper);
+  // Grid Floor (Matching Portal Grid — 20 cols × 10 rows, 1m square cells)
+  {
+    const cols = 20, rows = 10, cell = 1;
+    const halfW = (cols * cell) / 2;
+    const halfD = (rows * cell) / 2;
+    const verts: number[] = [];
+    for (let i = 0; i <= cols; i++) {
+      const x = -halfW + i * cell;
+      verts.push(x, 0, -halfD, x, 0, halfD);
+    }
+    for (let j = 0; j <= rows; j++) {
+      const z = -halfD + j * cell;
+      verts.push(-halfW, 0, z, halfW, 0, z);
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute('position', new Float32BufferAttribute(verts, 3));
+    const mat = new LineBasicMaterial({ color: 0x6366f1, transparent: true, opacity: 0.5 });
+    const gridLines = new LineSegments(geo, mat);
+    gridLines.position.y = 0.01;
+    world.createTransformEntity(gridLines);
+  }
 
   // Transparent Floor Plane for better collision/visibility
-  const floorGeom = new PlaneGeometry(gridSize, gridSize);
+  const floorGeom = new PlaneGeometry(20, 10);
   floorGeom.rotateX(-Math.PI / 2);
   const floorMat = new MeshStandardMaterial({ 
     color: 0x09090b, 

@@ -52,11 +52,22 @@ export class PortalSystem extends createSystem({}) {
   private spawnedEntities = new Map<string, ReturnType<typeof this.world.createTransformEntity>>();
   private lastPosSend = 0;
   private tempPos!: Vector3;
+  private tempFwd!: Vector3;
+  private userId: string | null = null;
+  // spaceId is the Quest Shared Spaces XRSharedReferenceSpace UUID when available.
+  // Set externally (e.g. by a future SharedSpaceSystem that requests the "shared"
+  // feature and listens for the reference space UUID); forwarded on every update.
+  public spaceId: string | null = null;
   // Pre-allocated to avoid update() allocations
-  private posMsg = { type: 'PLAYER_POSITION', position: { x: 0, z: 0 } };
+  private posMsg: {
+    type: string;
+    position: { x: number; z: number; heading: number };
+    spaceId: string | null;
+  } = { type: 'PLAYER_POSITION', position: { x: 0, z: 0, heading: 0 }, spaceId: null };
 
   init() {
     this.tempPos = new Vector3();
+    this.tempFwd = new Vector3();
     this.connectWS();
   }
 
@@ -84,7 +95,9 @@ export class PortalSystem extends createSystem({}) {
 
   private handleMessage(msg: any) {
     switch (msg.type) {
-      case 'INIT':
+      case 'WELCOME':
+        this.userId = msg.userId;
+        console.log(`[GridSync] Joined as ${this.userId?.slice(0, 8)}`);
         for (const key of [...this.spawnedEntities.keys()]) {
           this.despawnItem(key);
         }
@@ -138,6 +151,10 @@ export class PortalSystem extends createSystem({}) {
     this.player.head.getWorldPosition(this.tempPos);
     this.posMsg.position.x = this.tempPos.x;
     this.posMsg.position.z = this.tempPos.z;
+    // Derive yaw from head forward vector (project onto XZ plane)
+    this.tempFwd.set(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+    this.posMsg.position.heading = Math.atan2(this.tempFwd.x, this.tempFwd.z);
+    this.posMsg.spaceId = this.spaceId;
     this.ws.send(JSON.stringify(this.posMsg));
     this.lastPosSend = now;
   }
