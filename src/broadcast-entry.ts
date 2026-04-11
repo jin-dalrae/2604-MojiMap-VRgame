@@ -9,8 +9,6 @@ import {
   Sprite,
   SpriteMaterial,
   CanvasTexture,
-  Color,
-  DomeGradient,
 } from "@iwsdk/core";
 
 async function init() {
@@ -26,15 +24,6 @@ async function init() {
   });
 
   const { camera } = world;
-
-  // Dark background via DomeGradient (scene.background is overridden by dome)
-  const levelRoot = world.activeLevel.value;
-  levelRoot.addComponent(DomeGradient, {
-    sky:     [0.035, 0.035, 0.043, 1.0], // #09090b
-    equator: [0.06,  0.06,  0.07,  1.0],
-    ground:  [0.02,  0.02,  0.025, 1.0],
-    intensity: 1.0,
-  });
 
   // ── Grid Floor (20×20 to match portal grid) ────────────────
   const gridHelper = new GridHelper(20, 20, 0x6366f1, 0x27272a);
