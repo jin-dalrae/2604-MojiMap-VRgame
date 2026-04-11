@@ -22,8 +22,8 @@
         --cell-alt: #18181d;
         --cell-border: #222226;
         --success: #10b981;
-        /* cell size: fit 10 cols + 9 gaps(2px) + 12px padding each side into viewport width */
-        --cell-size: clamp(28px, calc((100vw - 42px) / 10), 48px);
+        /* cell size: fit 20 cols + 19 gaps(2px) + board/area padding into viewport width */
+        --cell-size: clamp(14px, calc((100vw - 72px) / 20), 32px);
       }
 
       html, body {
@@ -36,7 +36,7 @@
         color: var(--text);
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
         display: grid;
-        grid-template-rows: 40px 1fr 88px 30px;
+        grid-template-rows: 40px auto 1fr 30px;
         height: 100dvh;
       }
 
@@ -86,10 +86,10 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
         overflow: hidden;
-        padding: 10px 12px 6px;
-        gap: 8px;
+        padding: 8px 12px 0;
+        gap: 6px;
       }
 
       .grid-meta {
@@ -121,7 +121,7 @@
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(10, var(--cell-size));
+        grid-template-columns: repeat(20, var(--cell-size));
         grid-template-rows: repeat(10, var(--cell-size));
         gap: 2px;
       }
@@ -175,56 +175,45 @@
       /* Show remove-x on touch-occupied cells too */
       .cell.show-remove .remove-x { display: flex; }
 
-      /* ── Palette (bottom strip) ── */
+      /* ── Palette (bottom multi-row) ── */
       .palette {
         background: var(--surface);
         border-top: 1px solid var(--border);
-        overflow-x: auto;
-        overflow-y: hidden;
         display: flex;
-        align-items: center;
+        flex-wrap: wrap;
+        align-content: flex-start;
         gap: 0;
-        padding: 0 8px;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
+        padding: 6px 8px 4px;
         flex-shrink: 0;
       }
-      .palette::-webkit-scrollbar { display: none; }
 
       .palette-section {
-        font-size: 8px;
+        width: 100%;
+        font-size: 9px;
         color: var(--border2);
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        padding: 0 6px;
-        flex-shrink: 0;
-        writing-mode: horizontal-tb;
+        padding: 4px 4px 2px;
       }
+      .palette-section:first-child { padding-top: 0; }
 
-      .palette-divider {
-        width: 1px;
-        height: 40px;
-        background: var(--border);
-        flex-shrink: 0;
-        margin: 0 4px;
-      }
+      .palette-divider { display: none; }
 
       .item {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 3px;
-        padding: 6px 7px;
-        border-radius: 8px;
+        gap: 2px;
+        padding: 5px 6px;
+        border-radius: 7px;
         border: 1px solid transparent;
         cursor: grab;
         user-select: none;
-        flex-shrink: 0;
         transition: background 0.1s, border-color 0.1s;
         -webkit-tap-highlight-color: transparent;
-        min-width: 44px;
-        min-height: 60px;
+        min-width: 52px;
+        flex: 0 0 auto;
       }
       .item:hover { background: var(--surface2); }
       .item:active { cursor: grabbing; }
@@ -233,7 +222,7 @@
         background: var(--accent-dim);
         border-color: var(--accent);
       }
-      .item-icon { font-size: 20px; line-height: 1; }
+      .item-icon { font-size: 18px; line-height: 1; }
       .item-label { font-size: 8px; color: var(--muted); white-space: nowrap; }
       .item.selected .item-label { color: #a5b4fc; }
 
@@ -338,7 +327,7 @@
 
     <!-- Mobile layout: grid area directly in body -->
     <div class="grid-area" id="grid-area-mobile">
-      <div class="grid-meta">Birds Eye · 10×10 · tap item below then tap cell</div>
+      <div class="grid-meta">Birds Eye · 20×10 · tap item below then tap cell</div>
       <div class="grid-board">
         <span class="compass compass-n">N</span>
         <span class="compass compass-s">S</span>
@@ -392,7 +381,7 @@
       </div>
 
       <div class="grid-area" id="grid-area-desktop">
-        <div class="grid-meta">Birds Eye · 10×10 · drag or tap to place</div>
+        <div class="grid-meta">Birds Eye · 20×10 · drag or tap to place</div>
         <div class="grid-board">
           <span class="compass compass-n">N</span>
           <span class="compass compass-s">S</span>
@@ -411,7 +400,7 @@
     <div id="drag-ghost"></div>
 
     <script>
-      const COLS = 10, ROWS = 10;
+      const COLS = 20, ROWS = 10;
       const channel = new BroadcastChannel('xr-portal');
 
       // Detect active grid based on viewport
