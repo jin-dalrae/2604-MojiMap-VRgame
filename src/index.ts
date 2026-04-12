@@ -66,8 +66,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     world.createTransformEntity(gridLines);
   }
 
-  // Floor plane — gives the locomotion system something to stand on
-  // and keeps placed grid items from blending into the passthrough feed.
+  // Visible floor under the grid
   const floorGeom = new PlaneGeometry(20, 10);
   floorGeom.rotateX(-Math.PI / 2);
   const floorMat = new MeshStandardMaterial({
@@ -79,5 +78,18 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   const floorMesh = new Mesh(floorGeom, floorMat);
   world
     .createTransformEntity(floorMesh)
+    .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
+
+  // Invisible extended floor so the player can't fall off the edge.
+  // 200×200 covers far beyond anywhere they could walk.
+  const safeGeom = new PlaneGeometry(200, 200);
+  safeGeom.rotateX(-Math.PI / 2);
+  const safeMat = new MeshStandardMaterial({
+    visible: false,
+  });
+  const safeMesh = new Mesh(safeGeom, safeMat);
+  safeMesh.position.y = -0.01;
+  world
+    .createTransformEntity(safeMesh)
     .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
 });

@@ -127,6 +127,7 @@ async function init() {
     entity: ReturnType<typeof world.createTransformEntity>;
     root: Mesh;
     headingPivot: Mesh;
+    cone: Mesh;
   };
 
   const USER_COLORS = [
@@ -184,7 +185,7 @@ async function init() {
     headingPivot.add(cone);
 
     const entity = world.createTransformEntity(root);
-    return { entity, root, headingPivot };
+    return { entity, root, headingPivot, cone };
   }
 
   function disposePlayerMarker(m: PlayerMarker) {
@@ -285,7 +286,7 @@ async function init() {
 
   function updatePlayerMarker(
     userId: string,
-    pos: { x: number; z: number; heading?: number },
+    pos: { x: number; z: number; heading?: number; pitch?: number },
   ) {
     let marker = players.get(userId);
     if (!marker) {
@@ -296,6 +297,9 @@ async function init() {
     marker.root.position.z = pos.z;
     if (typeof pos.heading === 'number') {
       marker.headingPivot.rotation.y = pos.heading;
+    }
+    if (typeof pos.pitch === 'number') {
+      marker.cone.rotation.x = -pos.pitch;
     }
   }
 
