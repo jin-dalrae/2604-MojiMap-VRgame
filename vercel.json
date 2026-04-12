@@ -7,6 +7,10 @@
     {
       "source": "/broadcast",
       "destination": "/broadcast.html"
+    },
+    {
+      "source": "/puppet",
+      "destination": "/puppet.html"
     }
   ]
 }

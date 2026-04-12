@@ -5,10 +5,13 @@ import { defineConfig } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 
-// Self-signed cert generated via `openssl req -x509 ... -addext "subjectAltName=..."`.
-// mkcert would be nicer but its -install step needs sudo and can't be automated.
-// Chrome will warn on first visit; click "Advanced → Proceed" once and it remembers.
+// Self-signed cert for local HTTPS dev. Only loaded if .certs/ exists (it's
+// gitignored, so Vercel/CI won't have it — that's fine, server.https is
+// only used by `vite dev`, not `vite build`).
 const CERT_DIR = path.resolve(__dirname, ".certs");
+const certsExist =
+  fs.existsSync(path.join(CERT_DIR, "key.pem")) &&
+  fs.existsSync(path.join(CERT_DIR, "cert.pem"));
 
 export default defineConfig({
   plugins: [
@@ -27,10 +30,14 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 8081,
     open: false,
-    https: {
-      key:  fs.readFileSync(path.join(CERT_DIR, "key.pem")),
-      cert: fs.readFileSync(path.join(CERT_DIR, "cert.pem")),
-    },
+    ...(certsExist
+      ? {
+          https: {
+            key:  fs.readFileSync(path.join(CERT_DIR, "key.pem")),
+            cert: fs.readFileSync(path.join(CERT_DIR, "cert.pem")),
+          },
+        }
+      : {}),
   },
   build: {
     outDir: "dist",
@@ -41,6 +48,7 @@ export default defineConfig({
         main: "./index.html",
         portal: "./portal.html",
         broadcast: "./broadcast.html",
+        puppet: "./puppet.html",
       },
     },
   },
