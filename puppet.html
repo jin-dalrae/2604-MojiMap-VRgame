@@ -349,7 +349,7 @@
         selfDot.style.top  = p.py + 'px';
         selfCone.style.left = p.px + 'px';
         selfCone.style.top  = p.py + 'px';
-        selfCone.style.transform = `rotate(${self.heading * 180 / Math.PI}deg)`;
+        selfCone.style.transform = `rotate(${-self.heading * 180 / Math.PI}deg)`;
       }
       document.getElementById('pos-readout').textContent =
         `x=${self.x.toFixed(1)}  z=${self.z.toFixed(1)}  ·  ${(self.heading * 180 / Math.PI).toFixed(0)}°`;
@@ -422,7 +422,7 @@
       if (typeof pos.heading === 'number') {
         entry.cone.style.left = p.px + 'px';
         entry.cone.style.top  = p.py + 'px';
-        entry.cone.style.transform = `rotate(${pos.heading * 180 / Math.PI}deg)`;
+        entry.cone.style.transform = `rotate(${-pos.heading * 180 / Math.PI}deg)`;
       }
     }
   </script>

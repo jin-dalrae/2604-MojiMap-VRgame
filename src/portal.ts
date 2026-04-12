@@ -152,9 +152,8 @@ export class PortalSystem extends createSystem({}) {
     this.player.head.getWorldPosition(this.tempPos);
     this.posMsg.position.x = this.tempPos.x;
     this.posMsg.position.z = this.tempPos.z;
-    // Derive yaw from head forward vector (project onto XZ plane)
-    this.tempFwd.set(0, 0, -1).applyQuaternion(this.player.head.quaternion);
-    this.posMsg.position.heading = Math.atan2(this.tempFwd.x, this.tempFwd.z);
+    this.player.head.getWorldDirection(this.tempFwd);
+    this.posMsg.position.heading = Math.atan2(-this.tempFwd.x, -this.tempFwd.z);
     this.posMsg.spaceId = this.spaceId;
     this.ws.send(JSON.stringify(this.posMsg));
     this.lastPosSend = now;

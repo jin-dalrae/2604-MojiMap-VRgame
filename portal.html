@@ -634,7 +634,7 @@
             const deg = pos.heading * 180 / Math.PI;
             s.cone.style.left = px + 'px';
             s.cone.style.top  = py + 'px';
-            s.cone.style.transform = `rotate(${deg}deg)`;
+            s.cone.style.transform = `rotate(${-deg}deg)`;
           }
         });
       }
