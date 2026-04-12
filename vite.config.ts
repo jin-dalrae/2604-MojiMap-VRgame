@@ -2,7 +2,13 @@ import { iwsdkDev } from "@iwsdk/vite-plugin-dev";
 
 import { compileUIKit } from "@iwsdk/vite-plugin-uikitml";
 import { defineConfig } from "vite";
-import mkcert from "vite-plugin-mkcert";
+import fs from "node:fs";
+import path from "node:path";
+
+// Self-signed cert generated via `openssl req -x509 ... -addext "subjectAltName=..."`.
+// mkcert would be nicer but its -install step needs sudo and can't be automated.
+// Chrome will warn on first visit; click "Advanced → Proceed" once and it remembers.
+const CERT_DIR = path.resolve(__dirname, ".certs");
 
 export default defineConfig({
   plugins: [
@@ -17,7 +23,15 @@ export default defineConfig({
 
     compileUIKit({ sourceDir: "ui", outputDir: "public/ui", verbose: true }),
   ],
-  server: { host: "0.0.0.0", port: 8081, open: false },
+  server: {
+    host: "0.0.0.0",
+    port: 8081,
+    open: false,
+    https: {
+      key:  fs.readFileSync(path.join(CERT_DIR, "key.pem")),
+      cert: fs.readFileSync(path.join(CERT_DIR, "cert.pem")),
+    },
+  },
   build: {
     outDir: "dist",
     sourcemap: process.env.NODE_ENV !== "production",

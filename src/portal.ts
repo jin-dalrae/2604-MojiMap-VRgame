@@ -1,55 +1,54 @@
 import {
   createSystem,
   Vector3,
-  Mesh,
-  MeshStandardMaterial,
-  BoxGeometry,
-  SphereGeometry,
-  CylinderGeometry,
-  TorusGeometry,
-  Color,
+  Sprite,
+  SpriteMaterial,
+  CanvasTexture,
 } from "@iwsdk/core";
 
 // ── Grid coordinate mapping ──────────────────────────────────
 // Portal grid: 20 cols × 10 rows
-// Cell (row r, col c) center → world: x = c - 9.5, y = 0.4, z = r - 4.5
+// Cell (row r, col c) center → world: x = c - 9.5, z = r - 4.5.
+// y is chosen so the billboarded sprite hovers just above the grid floor.
 function gridToWorld(row: number, col: number): [number, number, number] {
-  return [col - 9.5, 0.4, row - 4.5];
+  return [col - 9.5, 0.55, row - 4.5];
 }
 
-// ── Mesh factory ─────────────────────────────────────────────
-const ITEM_CONFIGS: Record<string, { geo: () => any; color: number }> = {
-  cube:     { geo: () => new BoxGeometry(0.55, 0.55, 0.55),          color: 0x6366f1 },
-  sphere:   { geo: () => new SphereGeometry(0.32, 16, 16),           color: 0x3b82f6 },
-  cylinder: { geo: () => new CylinderGeometry(0.2, 0.2, 0.55, 16),  color: 0x92400e },
-  chair:    { geo: () => new BoxGeometry(0.35, 0.45, 0.35),          color: 0x78350f },
-  table:    { geo: () => new BoxGeometry(0.65, 0.07, 0.45),          color: 0xa16207 },
-  lamp:     { geo: () => new SphereGeometry(0.18, 12, 12),           color: 0xfbbf24 },
-  plant:    { geo: () => new CylinderGeometry(0.12, 0.18, 0.45, 12), color: 0x16a34a },
-  screen:   { geo: () => new BoxGeometry(0.65, 0.38, 0.05),          color: 0x312e81 },
-  fire:     { geo: () => new SphereGeometry(0.22, 10, 10),           color: 0xef4444 },
-  portal:   { geo: () => new TorusGeometry(0.32, 0.06, 12, 32),      color: 0x8b5cf6 },
-  star:     { geo: () => new SphereGeometry(0.28, 12, 12),           color: 0xfbbf24 },
-  music:    { geo: () => new SphereGeometry(0.18, 10, 10),           color: 0xec4899 },
-  robot:    { geo: () => new BoxGeometry(0.28, 0.48, 0.22),          color: 0x6366f1 },
-};
+// ── Emoji sprite factory ─────────────────────────────────────
+// Same pipeline as the broadcast view: render the emoji character onto a
+// CanvasTexture and wrap it in a Three.js Sprite so it always faces the
+// headset. Works in WebXR — sprites are camera-locked quads.
+function makeEmojiSprite(emoji: string, size = 1.1): Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d")!;
 
-function buildMesh(type: string): Mesh {
-  const cfg = ITEM_CONFIGS[type] ?? ITEM_CONFIGS.cube;
-  const mat = new MeshStandardMaterial({
-    color: new Color(cfg.color),
-    roughness: 0.4,
-    metalness: 0.2,
-    emissive: new Color(cfg.color),
-    emissiveIntensity: 0.15,
+  ctx.font = '108px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(emoji, 64, 70);
+
+  const texture = new CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  const material = new SpriteMaterial({
+    map: texture,
+    transparent: true,
+    alphaTest: 0.1,
+    depthWrite: true,
   });
-  return new Mesh(cfg.geo(), mat);
+  const sprite = new Sprite(material);
+  sprite.scale.set(size, size, 1);
+  return sprite;
 }
 
 // ── System ───────────────────────────────────────────────────
 export class PortalSystem extends createSystem({}) {
   private ws: WebSocket | null = null;
-  private spawnedEntities = new Map<string, ReturnType<typeof this.world.createTransformEntity>>();
+  private spawnedEntities = new Map<
+    string,
+    { entity: { dispose(): void }; sprite: Sprite }
+  >();
   private lastPosSend = 0;
   private tempPos!: Vector3;
   private tempFwd!: Vector3;
@@ -123,23 +122,25 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
-  private spawnItem(key: string, item: { type: string }) {
+  private spawnItem(key: string, item: { type: string; icon: string }) {
     const [row, col] = key.split(',').map(Number);
     const [x, y, z] = gridToWorld(row, col);
 
-    const mesh = buildMesh(item.type);
-    mesh.position.set(x, y, z);
+    const sprite = makeEmojiSprite(item.icon, 1.1);
+    sprite.position.set(x, y, z);
 
-    const entity = this.world.createTransformEntity(mesh);
-    this.spawnedEntities.set(key, entity);
+    const entity = this.world.createTransformEntity(sprite);
+    this.spawnedEntities.set(key, { entity, sprite });
   }
 
   private despawnItem(key: string) {
-    const entity = this.spawnedEntities.get(key);
-    if (entity) {
-      entity.dispose();
-      this.spawnedEntities.delete(key);
-    }
+    const record = this.spawnedEntities.get(key);
+    if (!record) return;
+    const mat = record.sprite.material as SpriteMaterial;
+    if (mat.map) mat.map.dispose();
+    mat.dispose();
+    record.entity.dispose();
+    this.spawnedEntities.delete(key);
   }
 
   update() {
