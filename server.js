@@ -21,7 +21,7 @@ import { createServer } from 'http';
 import { networkInterfaces } from 'os';
 import { randomUUID } from 'crypto';
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // ── Shared state ────────────────────────────────────────────
 const gridState = new Map(); // "r,c" -> { type, icon, label }

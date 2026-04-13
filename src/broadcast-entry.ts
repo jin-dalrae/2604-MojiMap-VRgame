@@ -232,7 +232,8 @@ async function init() {
 
   // ── WebSocket sync ─────────────────────────────────────────
   function connectWS() {
-    const url = `ws://${window.location.hostname}:3001`;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const url = isLocal ? `ws://${window.location.hostname}:3001` : `wss://questproto-725835663363.us-west1.run.app`;
     console.log(`[Broadcast] Connecting → ${url}`);
     const ws = new WebSocket(url);
 
