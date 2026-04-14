@@ -364,14 +364,39 @@ async function init() {
   function setRoundRunning(v: boolean) {
     if (roundRunning === v) return;
     roundRunning = v;
-    for (const it of spawnedItems.values()) if (it.kind === 'wall') setWallState(it, v);
+    for (const it of spawnedItems.values()) {
+      if (it.kind === 'wall') setWallState(it, v);
+    }
+    // Round just ended: snap dynamic items back to their origin so
+    // the spectator view doesn't show enemies frozen at random map
+    // positions until the next round starts.
+    if (!v) snapDynamicItemsHome();
+  }
+
+  function snapDynamicItemsHome() {
+    for (const it of spawnedItems.values()) {
+      if (it.kind !== 'sprite') continue;
+      if (it.role !== 'enemy' && it.role !== 'bird') continue;
+      it.object3D.position.set(it.origin[0], it.origin[1], it.origin[2]);
+      // Reset bird visual tweaks (upside-down rotation) so the next
+      // round opens with a clean slate.
+      if (it.role === 'bird') {
+        const mat = (it.object3D as Sprite).material as SpriteMaterial;
+        mat.rotation = 0;
+      }
+    }
   }
 
   // ── AI tick (mirrors portal.ts behavior) ───────────────────
-  // Skipped while we have authoritative state from a VR client — the
-  // VR side's AI is the ground truth; broadcast just renders.
+  // Two suppression conditions, in order:
+  //   1. Round isn't running — VR keeps enemies static between rounds,
+  //      so broadcast does the same. Avoids a stream of motion when
+  //      nobody's playing.
+  //   2. A VR client recently sent authoritative ITEM_STATES — defer
+  //      to VR's positions instead of inventing our own.
   const tempVec = new Vector3();
   function tickEnemyAI(deltaSeconds: number, time: number) {
+    if (!roundRunning) return;
     if (performance.now() - lastAuthAt < AUTH_TIMEOUT_MS) return;
     // Live targets — mirror VR's logic. Players who are dead are filtered.
     const targets: { x: number; z: number }[] = [];

@@ -414,3 +414,9 @@ there is also a broadcast page, and it should have a full version of the app run
 ```
 but right now the sprights arent matching i think you aren't making actual locatinos of the sprites. i guess that woulld be syncing more server things, so maybe woudl that overwhelm the server or get too expensive to update all thos sprites locations? you have them moving on thre own, but like it should match the game state exaclty
 ```
+
+## 2026-04-15T03:45:00Z
+
+```
+right now you have them operating on their loops. no one is playing an dhte emoji's are follwign their game logic.
+```
