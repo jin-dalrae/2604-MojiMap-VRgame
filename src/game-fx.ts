@@ -142,6 +142,13 @@ export const FX = {
     // Tight click that plays while the bomb blinks
     beep(1100, 40, "square", 0.1);
   },
+  megaJump: (gamepad?: StatefulGamepad | null) => {
+    // Rising whoosh — pitch sweep up + a soft ringing tail
+    beep(220, 220, "triangle", 0.22, 1100);
+    setTimeout(() => beep(660, 180, "triangle", 0.16, 1500), 60);
+    setTimeout(() => beep(880, 240, "sine",     0.14, 1200), 140);
+    pulse(gamepad, 0.9, 120);
+  },
   bombExplode: (gamepad?: StatefulGamepad | null) => {
     // Big boom — low punch + wide noisy tail
     beep(60, 320, "sawtooth", 0.35, 30);

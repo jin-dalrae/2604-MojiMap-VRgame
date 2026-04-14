@@ -64,6 +64,9 @@ import {
   WOOD_HP,
   WOOD_COLOR,
   WOOD_HIT_FLASH_MS,
+  MEGA_JUMP_VY,
+  MEGA_JUMP_GRAVITY,
+  MEGA_JUMP_COOLDOWN_MS,
   enemyBehavior,
   type ItemRole,
 } from "./game-state.js";
@@ -83,6 +86,7 @@ const TYPE_TO_ROLE: Record<string, ItemRole> = {
   sword:         'weapon-sword',
   gun:           'weapon-gun',
   poopoodoodoo:  'weapon-poo',
+  feather:       'weapon-feather',
   star:          'goal',
   fire:          'obstacle-damage',
   robot:         'enemy',
@@ -267,6 +271,12 @@ export class PortalSystem extends createSystem({}) {
   private goalsTotal!: Signal<number>;
   private goalsCollected!: Signal<number>;
   private hasBomb!: Signal<boolean>;
+  private hasMegaJump!: Signal<boolean>;
+  // Mega-jump physics state.
+  private megaJumpActive = false;
+  private megaJumpVy = 0;
+  private megaJumpFloorY = 0;
+  private megaJumpLastAt = 0;
   private isDead!: Signal<boolean>;
   // Hazard damage cooldown — player invulnerable while `now` is
   // inside this window. Blocks spam damage and pairs with the red
@@ -319,6 +329,7 @@ export class PortalSystem extends createSystem({}) {
     this.goalsTotal     = GameState.goalsTotal(globals);
     this.goalsCollected = GameState.goalsCollected(globals);
     this.hasBomb        = GameState.hasBomb(globals);
+    this.hasMegaJump    = GameState.hasMegaJump(globals);
     this.isDead         = GameState.isDead(globals);
     this.roundPending   = GameState.roundPending(globals);
     this.lastDamageAt   = GameState.lastDamageAt(globals);
@@ -330,6 +341,7 @@ export class PortalSystem extends createSystem({}) {
     GameActions.setFindEnemyAt(globals, (x, y, z, r2) => this.findEnemyAt(x, y, z, r2));
     GameActions.setSwingSword(globals, () => this.swingSword());
     GameActions.setExplodeAt(globals, (x, y, z, r) => this.explodeAt(x, y, z, r));
+    GameActions.setMegaJump(globals, () => this.megaJump());
 
     this.connectWS();
     this.setupKeyboard();
@@ -418,6 +430,13 @@ export class PortalSystem extends createSystem({}) {
           // Keyboard fallback for the voice-triggered poop bomb.
           const spawn = GameActions.spawnBomb(this.world.globals as Record<string, unknown>);
           spawn?.();
+          break;
+        }
+        case 'KeyJ': {
+          e.preventDefault();
+          // Keyboard fallback for the voice-triggered mega jump.
+          const jump = GameActions.megaJump(this.world.globals as Record<string, unknown>);
+          jump?.();
           break;
         }
       }
@@ -616,6 +635,7 @@ export class PortalSystem extends createSystem({}) {
         this.equippedLeft.value = null;
         this.equippedRight.value = null;
         this.hasBomb.value = false;
+        this.hasMegaJump.value = false;
         this.isDead.value = false;
         this.roundPending.value = false;
         this.roundEndsAt.value = msg.endsAt;
@@ -647,6 +667,7 @@ export class PortalSystem extends createSystem({}) {
         this.equippedLeft.value = null;
         this.equippedRight.value = null;
         this.hasBomb.value = false;
+        this.hasMegaJump.value = false;
         // HUD shows the result overlay; it clears the signal when it hides.
         this.roundResult.value = {
           reason,
@@ -1054,6 +1075,39 @@ export class PortalSystem extends createSystem({}) {
     FX.swordHit(this.input.gamepads.left); // whoosh
   }
 
+  // 🪶 Mega jump — launch the XROrigin straight up, let manual gravity
+  // bring it back down to the pre-jump y. Gated on hasMegaJump (the
+  // feather pickup grants the ability for the rest of the round).
+  private megaJump() {
+    if (this.isDead.peek()) return;
+    if (!this.hasMegaJump.peek()) {
+      console.log('[MegaJump] no ability — pick up a 🪶 first');
+      return;
+    }
+    const now = performance.now();
+    if (now - this.megaJumpLastAt < MEGA_JUMP_COOLDOWN_MS) return;
+    if (this.megaJumpActive) return; // already mid-air
+    this.megaJumpLastAt = now;
+    this.megaJumpFloorY = this.player.position.y;
+    this.megaJumpVy = MEGA_JUMP_VY;
+    this.megaJumpActive = true;
+    FX.megaJump(this.input.gamepads.left ?? this.input.gamepads.right);
+  }
+
+  // Per-frame integration while airborne. Direct write to player.position.y
+  // — locomotion's floor detection doesn't fight this when we set position
+  // higher than the floor; it just lets us fall under our own gravity.
+  private tickMegaJump(deltaSeconds: number) {
+    if (!this.megaJumpActive) return;
+    this.player.position.y += this.megaJumpVy * deltaSeconds;
+    this.megaJumpVy -= MEGA_JUMP_GRAVITY * deltaSeconds;
+    if (this.player.position.y <= this.megaJumpFloorY && this.megaJumpVy < 0) {
+      this.player.position.y = this.megaJumpFloorY;
+      this.megaJumpVy = 0;
+      this.megaJumpActive = false;
+    }
+  }
+
   // Wood damage — 5 sword hits to break. Flashes red per hit (the wall
   // tick picks up hitFlashUntil). On death: GRID_CLEAR so other clients
   // see it vanish, same as any other grid removal.
@@ -1378,6 +1432,7 @@ export class PortalSystem extends createSystem({}) {
     this.equippedLeft.value = null;
     this.equippedRight.value = null;
     this.hasBomb.value = false;
+    this.hasMegaJump.value = false;
     FX.roundLose(); // personal death cue — everyone else plays on
   }
 
@@ -1485,6 +1540,12 @@ export class PortalSystem extends createSystem({}) {
         this.hasBomb.value = true;
         FX.pickupWeapon(rightPad ?? leftPad);
         break;
+      case 'weapon-feather':
+        // 🪶 grants UNLIMITED mega-jumps via the peacock voice phrase
+        // (or the J keyboard shortcut for testing).
+        this.hasMegaJump.value = true;
+        FX.pickupWeapon(rightPad ?? leftPad);
+        break;
       case 'goal':
         this.score.value = this.score.peek() + GOAL_POINTS;
         this.goalsCollected.value = this.goalsCollected.peek() + 1;
@@ -1526,6 +1587,9 @@ export class PortalSystem extends createSystem({}) {
     // Sword contact checks run whenever the sword is equipped — the
     // tip's velocity is what decides a hit, not a discrete swing event.
     if (roundRunning) this.tickSwordContact(delta);
+    // Mega-jump runs any time so an in-flight jump completes cleanly
+    // even at round-end / death.
+    this.tickMegaJump(delta);
     // Wall red-flash (on sword hit) runs any time so the tint resets
     // cleanly regardless of round state.
     this.tickWallFlash();

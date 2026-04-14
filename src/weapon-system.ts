@@ -64,17 +64,17 @@ function makeSword(): { group: Group; tip: Object3D } {
   return { group, tip };
 }
 
-// Tiny billboarded poop emoji that sits on the sword hand to signal
-// "you have unlimited bombs". Coexists with the sword — sibling under
-// the grip, not a child of the sword group.
-function makePooBadge(size = 0.14): Sprite {
+// Tiny billboarded emoji that sits on the sword hand to signal an
+// active ability. Coexists with the sword — sibling under the grip,
+// not a child of the sword group.
+function makeEmojiBadge(emoji: string, size = 0.14): Sprite {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 64;
   const ctx = canvas.getContext("2d")!;
   ctx.font = '54px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("💩", 32, 36);
+  ctx.fillText(emoji, 32, 36);
   const tex = new CanvasTexture(canvas);
   tex.needsUpdate = true;
   const mat = new SpriteMaterial({ map: tex, transparent: true, depthWrite: true });
@@ -117,9 +117,10 @@ function makeSquirtGun(): Group {
 export class WeaponSystem extends createSystem({}) {
   private leftWeapon: Object3D | null = null;
   private rightWeapon: Object3D | null = null;
-  // Visible 💩 badge on the sword hand — coexists with the sword.
-  // Indicates the player has the bomb-throw ability.
+  // Visible badges on the sword hand — coexist with the sword.
+  // Each one represents an unlocked ability (bomb / mega-jump).
   private pooBadge: Sprite | null = null;
+  private featherBadge: Sprite | null = null;
   private lastFireAt = 0;
   private gunEquipped = false;
   private swordEquipped = false;
@@ -133,6 +134,7 @@ export class WeaponSystem extends createSystem({}) {
     const equippedRight = GameState.equippedRight(globals);
     const lastSwingAt   = GameState.lastSwingAt(globals);
     const hasBomb       = GameState.hasBomb(globals);
+    const hasMegaJump   = GameState.hasMegaJump(globals);
 
     this.cleanupFuncs.push(
       equippedLeft.subscribe((v) => {
@@ -149,26 +151,34 @@ export class WeaponSystem extends createSystem({}) {
       lastSwingAt.subscribe((ms) => {
         if (ms > 0) this.swingAnimStartAt = performance.now();
       }),
-      // 💩 badge on the sword hand reflects the bomb ability state.
-      hasBomb.subscribe((v) => this.syncPooBadge(v)),
+      // Badges on the sword hand reflect ability state.
+      hasBomb.subscribe((v) => this.syncBadge('poo', v)),
+      hasMegaJump.subscribe((v) => this.syncBadge('feather', v)),
     );
   }
 
-  private syncPooBadge(have: boolean) {
-    if (have && !this.pooBadge) {
-      const s = makePooBadge();
-      // Sit it slightly above + behind the grip so it doesn't poke
-      // through the sword blade. Sibling under gripSpaces.left so it
-      // tracks the controller without inheriting the sword's rotation.
-      s.position.set(0.05, 0.06, 0.08);
+  // Generic badge sync — keeps each ability's small emoji on the left
+  // grip in lockstep with its signal. Stacked vertically so multiple
+  // abilities don't overlap each other or the sword blade.
+  private syncBadge(kind: 'poo' | 'feather', have: boolean) {
+    const current = kind === 'poo' ? this.pooBadge : this.featherBadge;
+    if (have && !current) {
+      const emoji = kind === 'poo' ? '💩' : '🪶';
+      const s = makeEmojiBadge(emoji);
+      // Stacked: poo lower, feather above. Both behind the blade so
+      // they don't clip the sword.
+      const yOffset = kind === 'poo' ? 0.06 : 0.16;
+      s.position.set(0.05, yOffset, 0.08);
       this.player.gripSpaces.left.add(s);
-      this.pooBadge = s;
-    } else if (!have && this.pooBadge) {
-      this.player.gripSpaces.left.remove(this.pooBadge);
-      const m = this.pooBadge.material as SpriteMaterial;
+      if (kind === 'poo') this.pooBadge = s;
+      else this.featherBadge = s;
+    } else if (!have && current) {
+      this.player.gripSpaces.left.remove(current);
+      const m = current.material as SpriteMaterial;
       if (m.map) m.map.dispose();
       m.dispose();
-      this.pooBadge = null;
+      if (kind === 'poo') this.pooBadge = null;
+      else this.featherBadge = null;
     }
   }
 

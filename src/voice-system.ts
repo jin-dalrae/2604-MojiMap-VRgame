@@ -30,6 +30,14 @@ function matchesBombPhrase(text: string): boolean {
   return oo >= 3;
 }
 
+// Peacock mega-jump phrase: "I'm a peacock … fly". Accepts any number
+// of words between "peacock" and "fly". We strip apostrophes and
+// punctuation so "I'm" / "Im" / "I am" all parse to the same shape.
+function matchesPeacockPhrase(text: string): boolean {
+  const clean = text.toLowerCase().replace(/[^a-z]+/g, " ").replace(/\s+/g, " ").trim();
+  return /\b(im|i am)\s+a\s+peacock\b.*\bfly\b/.test(clean);
+}
+
 function tokenUrl(): string {
   const isLocal =
     location.hostname === "localhost" || location.hostname === "127.0.0.1";
@@ -171,11 +179,20 @@ export class VoiceSystem extends createSystem({}) {
   }
 
   private checkPhrase(text: string) {
-    if (!matchesBombPhrase(text)) return;
-    console.log('[Voice] bomb phrase matched');
-    this.interim = ""; // don't double-trigger as the rest streams in
-    const spawn = GameActions.spawnBomb(this.world.globals as Record<string, unknown>);
-    spawn?.();
+    if (matchesBombPhrase(text)) {
+      console.log('[Voice] bomb phrase matched');
+      this.interim = ""; // don't double-trigger as the rest streams in
+      const spawn = GameActions.spawnBomb(this.world.globals as Record<string, unknown>);
+      spawn?.();
+      return;
+    }
+    if (matchesPeacockPhrase(text)) {
+      console.log('[Voice] peacock phrase matched');
+      this.interim = "";
+      const jump = GameActions.megaJump(this.world.globals as Record<string, unknown>);
+      jump?.();
+      return;
+    }
   }
 
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;

@@ -10,6 +10,7 @@ export type ItemRole =
   | "weapon-sword"
   | "weapon-gun"
   | "weapon-poo"
+  | "weapon-feather"
   | "goal"
   | "powerup"
   | "obstacle-damage"
@@ -23,6 +24,7 @@ export function isPickup(role: ItemRole): boolean {
     role === "weapon-sword" ||
     role === "weapon-gun" ||
     role === "weapon-poo" ||
+    role === "weapon-feather" ||
     role === "goal" ||
     role === "powerup"
   );
@@ -159,6 +161,13 @@ export const WOOD_HIT_FLASH_MS = 260;      // shared with bird-style tint flash
 // and the left controller's trigger both dispatch a swing.
 export const SWORD_SWING_MS = 300;
 
+// 🪶 Mega jump — voice phrase "I'm a peacock … fly" launches the player
+// straight up. Manual physics: initial vy then constant gravity until
+// the player returns to their pre-jump y.
+export const MEGA_JUMP_VY      = 13;   // m/s upward initial velocity (~8.5 m apex)
+export const MEGA_JUMP_GRAVITY = 9.8;  // m/s² downward
+export const MEGA_JUMP_COOLDOWN_MS = 200; // tiny debounce so a partial transcript can't double-fire
+
 // 💩 Voice-triggered bomb — "poo poo doo doo" spawns one. Launched like
 // a grenade: forward-and-up throw, gravity arcs it down, lands on the
 // floor and blinks with rising urgency before detonating.
@@ -218,6 +227,8 @@ export const GameActions = {
   setSpawnBomb: (g: Globals, fn: FireFn) => { g.spawnBomb = fn; },
   explodeAt: (g: Globals) => g.explodeAt as AreaDamageFn | undefined,
   setExplodeAt: (g: Globals, fn: AreaDamageFn) => { g.explodeAt = fn; },
+  megaJump: (g: Globals) => g.megaJump as FireFn | undefined,
+  setMegaJump: (g: Globals, fn: FireFn) => { g.megaJump = fn; },
 };
 
 // Round end reasons shared with the server / portal.
@@ -261,6 +272,9 @@ export const GameState = {
   // and grants UNLIMITED throws for the rest of the round. Reset on
   // ROUND_START / ROUND_END / death.
   hasBomb:        (g: Globals) => getOrInit<boolean>(g, "hasBomb", false),
+  // 🪶 mega-jump ability — picking up a feather grants unlimited
+  // peacock-phrase jumps. Same lifecycle as hasBomb.
+  hasMegaJump:    (g: Globals) => getOrInit<boolean>(g, "hasMegaJump", false),
 };
 
 // Enemies use this as a cell-size for wall avoidance: a wall occupies
