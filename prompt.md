@@ -384,3 +384,9 @@ saying poo poo doo doo does not work [GA realtime API parameter shape error]
 ```
 OK, ITS BEING TOO SELECTIVE maybe use the api to turn on a thing that makes it less discrimnating
 ```
+
+## 2026-04-15T02:10:00Z
+
+```
+ok this is great, now push it to vercel github railway whatever, do it as master branch
+```
