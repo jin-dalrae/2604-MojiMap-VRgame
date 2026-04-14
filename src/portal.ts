@@ -6,11 +6,15 @@ import {
   CanvasTexture,
   Mesh,
   MeshBasicMaterial,
+  MeshStandardMaterial,
   SphereGeometry,
   CylinderGeometry,
   ConeGeometry,
+  BoxGeometry,
   DoubleSide,
   Object3D,
+  LocomotionEnvironment,
+  EnvironmentType,
 } from "@iwsdk/core";
 import { type Signal } from "@preact/signals-core";
 import { FX } from "./game-fx.js";
@@ -122,9 +126,19 @@ type AvatarRecord = {
 };
 
 // ── System ───────────────────────────────────────────────────
+// Wall ("cube") items are rendered as real 3D geometry, not sprites,
+// so players can treat them as spatial obstacles. Tall enough to block
+// over-the-top shots but short enough to peek above if standing.
+const WALL_WIDTH  = 0.95;   // m — leaves a narrow gap between grid cells
+const WALL_HEIGHT = 2.2;
+const WALL_COLOR  = 0x3b82f6; // Tailwind blue-500 — matches the 🟦 emoji
+
 type SpawnedItem = {
   entity: { dispose(): void };
-  sprite: Sprite;
+  // The visual Object3D. Sprites for emoji items, Meshes for walls.
+  // `kind` lets animateItems/collision skip irrelevant branches cleanly.
+  object3D: Sprite | Mesh;
+  kind: 'sprite' | 'wall';
   role: ItemRole;
   // Portal's `type` string (e.g. "robot", "ghost"). Drives per-variant
   // enemy stats via enemyStats() — decor/pickups ignore it.
@@ -220,9 +234,9 @@ export class PortalSystem extends createSystem({}) {
     let bestD2 = r2;
     for (const [key, item] of this.spawnedEntities) {
       if (item.role !== 'enemy') continue;
-      const dx = item.sprite.position.x - x;
-      const dy = item.sprite.position.y - y;
-      const dz = item.sprite.position.z - z;
+      const dx = item.object3D.position.x - x;
+      const dy = item.object3D.position.y - y;
+      const dz = item.object3D.position.z - z;
       const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 < bestD2) {
         bestD2 = d2;
@@ -454,22 +468,57 @@ export class PortalSystem extends createSystem({}) {
     const [row, col] = key.split(',').map(Number);
     const [x, y, z] = gridToWorld(row, col);
 
+    const role: ItemRole = item.role ?? 'decor';
+    const type = item.type ?? 'decor';
+    const baseSize = 1.1;
+
+    // 🟦 cubes become real 3D walls — tall blocks the player can't
+    // pass through and that visually carve up the play area. Every
+    // other item stays a billboarded sprite.
+    if (type === 'cube') {
+      const wall = new Mesh(
+        new BoxGeometry(WALL_WIDTH, WALL_HEIGHT, WALL_WIDTH),
+        new MeshStandardMaterial({
+          color: WALL_COLOR,
+          roughness: 0.7,
+          metalness: 0.1,
+        }),
+      );
+      wall.position.set(x, WALL_HEIGHT / 2, z);
+      // LocomotionEnvironment makes the mesh a collider for the
+      // locomotion system so the player can't walk through it.
+      const entity = this.world
+        .createTransformEntity(wall)
+        .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
+      this.spawnedEntities.set(key, {
+        entity,
+        object3D: wall,
+        kind: 'wall',
+        role,
+        type,
+        baseSize,
+        origin: [x, y, z],
+        hp: 0,
+        nextDamageableAt: 0,
+      });
+      return;
+    }
+
     // Role drives halo/aura in the canvas. Older items placed before the
     // portal started tagging roles fall back to decor (no halo).
-    const role: ItemRole = item.role ?? 'decor';
-    const baseSize = 1.1;
     const sprite = makeEmojiSprite(item.icon, role, baseSize);
     sprite.position.set(x, y, z);
 
     const entity = this.world.createTransformEntity(sprite);
     this.spawnedEntities.set(key, {
       entity,
-      sprite,
+      object3D: sprite,
+      kind: 'sprite',
       role,
-      type: item.type ?? 'decor',
+      type,
       baseSize,
       origin: [x, y, z],
-      hp: role === 'enemy' ? enemyStats(item.type ?? '').hp : 0,
+      hp: role === 'enemy' ? enemyStats(type).hp : 0,
       nextDamageableAt: 0,
     });
   }
@@ -477,9 +526,17 @@ export class PortalSystem extends createSystem({}) {
   private despawnItem(key: string) {
     const record = this.spawnedEntities.get(key);
     if (!record) return;
-    const mat = record.sprite.material as SpriteMaterial;
-    if (mat.map) mat.map.dispose();
-    mat.dispose();
+    if (record.kind === 'sprite') {
+      const mat = (record.object3D as Sprite).material as SpriteMaterial;
+      if (mat.map) mat.map.dispose();
+      mat.dispose();
+    } else {
+      const mesh = record.object3D as Mesh;
+      mesh.geometry.dispose();
+      const m = mesh.material;
+      if (Array.isArray(m)) m.forEach((mm) => mm.dispose?.());
+      else (m as MeshStandardMaterial).dispose?.();
+    }
     record.entity.dispose();
     this.spawnedEntities.delete(key);
   }
@@ -493,7 +550,10 @@ export class PortalSystem extends createSystem({}) {
     const flick = 0.75 + Math.random() * 0.25; // hazard opacity jitter
 
     for (const item of this.spawnedEntities.values()) {
-      const s = item.sprite;
+      // Walls are static geometry — no halo, no pulse, no flicker.
+      if (item.kind !== 'sprite') continue;
+
+      const s = item.object3D as Sprite;
       const mat = s.material as SpriteMaterial;
 
       if (!roundRunning) {
@@ -543,7 +603,7 @@ export class PortalSystem extends createSystem({}) {
     // Snapshot keys first: despawning during Map iteration is fine, but
     // deterministic ordering matters when several items overlap.
     for (const [key, item] of [...this.spawnedEntities]) {
-      const headD2 = this.tempPos.distanceToSquared(item.sprite.position);
+      const headD2 = this.tempPos.distanceToSquared(item.object3D.position);
 
       // ── Pickups (weapons, goals, powerups) ──
       if (isPickup(item.role) && headD2 < pickupR2) {
@@ -568,7 +628,7 @@ export class PortalSystem extends createSystem({}) {
         }
         // Sword touches enemy → scheduled damage (once per cooldown)
         if (swordReady) {
-          const gripD2 = this.tempGrip.distanceToSquared(item.sprite.position);
+          const gripD2 = this.tempGrip.distanceToSquared(item.object3D.position);
           if (gripD2 < swordR2) {
             this.lastSwordHitAt = now;
             const killed = this.damageEnemy(key, SWORD_DAMAGE);
@@ -604,21 +664,21 @@ export class PortalSystem extends createSystem({}) {
 
       // Horizontal chase
       this.tempChase.set(
-        this.tempPos.x - item.sprite.position.x,
+        this.tempPos.x - item.object3D.position.x,
         0,
-        this.tempPos.z - item.sprite.position.z,
+        this.tempPos.z - item.object3D.position.z,
       );
       const dist = this.tempChase.length();
       if (dist > 0.1) {
         const step = stats.speed * deltaSeconds;
         this.tempChase.multiplyScalar(step / dist);
-        item.sprite.position.x += this.tempChase.x;
-        item.sprite.position.z += this.tempChase.z;
+        item.object3D.position.x += this.tempChase.x;
+        item.object3D.position.z += this.tempChase.z;
       }
 
       // Vertical bob — ghosts float and weave, ground units skip this.
       if (stats.bobAmp > 0) {
-        item.sprite.position.y =
+        item.object3D.position.y =
           item.origin[1] + 0.5 + Math.sin(time * stats.bobSpeed) * stats.bobAmp;
       }
     }
