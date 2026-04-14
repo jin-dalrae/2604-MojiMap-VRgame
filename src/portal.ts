@@ -28,11 +28,8 @@ import {
   FIRE_DPS,
   FIRE_RADIUS,
   PICKUP_RADIUS,
-  ENEMY_HP,
   ENEMY_DAMAGE_RADIUS,
-  ENEMY_DPS,
-  ENEMY_SPEED,
-  ENEMY_KILL_POINTS,
+  enemyStats,
   SWORD_RADIUS,
   SWORD_DAMAGE,
   SWORD_COOLDOWN_MS,
@@ -129,6 +126,9 @@ type SpawnedItem = {
   entity: { dispose(): void };
   sprite: Sprite;
   role: ItemRole;
+  // Portal's `type` string (e.g. "robot", "ghost"). Drives per-variant
+  // enemy stats via enemyStats() — decor/pickups ignore it.
+  type: string;
   baseSize: number;
   // Original grid cell position — used to snap enemies back home when
   // the round ends and they've drifted from chasing the player.
@@ -160,6 +160,8 @@ export class PortalSystem extends createSystem({}) {
   private equippedLeft!: Signal<"sword" | null>;
   private equippedRight!: Signal<"gun" | null>;
   private roundResult!: Signal<RoundResult | null>;
+  private goalsTotal!: Signal<number>;
+  private goalsCollected!: Signal<number>;
   // spaceId is the Quest Shared Spaces XRSharedReferenceSpace UUID when available.
   // Set externally (e.g. by a future SharedSpaceSystem that requests the "shared"
   // feature and listens for the reference space UUID); forwarded on every update.
@@ -185,6 +187,8 @@ export class PortalSystem extends createSystem({}) {
     this.equippedLeft  = GameState.equippedLeft(globals);
     this.equippedRight = GameState.equippedRight(globals);
     this.roundResult   = GameState.roundResult(globals);
+    this.goalsTotal     = GameState.goalsTotal(globals);
+    this.goalsCollected = GameState.goalsCollected(globals);
 
     // Expose damage entry-point for ProjectileSystem + any future attackers.
     // Passing the key lets the callback do O(1) lookup + broadcast GRID_CLEAR.
@@ -221,7 +225,7 @@ export class PortalSystem extends createSystem({}) {
     if (!item || item.role !== 'enemy') return false;
     item.hp -= amount;
     if (item.hp <= 0) {
-      this.score.value = this.score.peek() + ENEMY_KILL_POINTS;
+      this.score.value = this.score.peek() + enemyStats(item.type).killPoints;
       this.despawnItem(key);
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'GRID_CLEAR', key }));
@@ -292,10 +296,13 @@ export class PortalSystem extends createSystem({}) {
         this.roundRunning.value = true;
         // Snapshot goal count so checkWin() knows if this was a
         // goal-based round (ignore survival rounds with zero goals).
-        this.goalsAtRoundStart = 0;
+        // HUD also reads goalsTotal to decide whether to show "X/Y".
+        let total = 0;
         for (const item of this.spawnedEntities.values()) {
-          if (item.role === 'goal') this.goalsAtRoundStart++;
+          if (item.role === 'goal') total++;
         }
+        this.goalsTotal.value = total;
+        this.goalsCollected.value = 0;
         FX.roundStart();
         break;
 
@@ -445,9 +452,10 @@ export class PortalSystem extends createSystem({}) {
       entity,
       sprite,
       role,
+      type: item.type ?? 'decor',
       baseSize,
       origin: [x, y, z],
-      hp: role === 'enemy' ? ENEMY_HP : 0,
+      hp: role === 'enemy' ? enemyStats(item.type ?? '').hp : 0,
       nextDamageableAt: 0,
     });
   }
@@ -540,9 +548,9 @@ export class PortalSystem extends createSystem({}) {
 
       // ── Enemy logic ──
       if (item.role === 'enemy') {
-        // Enemy touches player → damage over time
+        // Enemy touches player → damage over time (per variant)
         if (headD2 < enemyR2) {
-          totalHealthDelta -= ENEMY_DPS * deltaSeconds;
+          totalHealthDelta -= enemyStats(item.type).dps * deltaSeconds;
         }
         // Sword touches enemy → scheduled damage (once per cooldown)
         if (swordReady) {
@@ -572,24 +580,33 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
-  // Simple chase: each enemy moves toward the player head at a fixed
-  // speed, snapped to ground-plane y. Called from animateItems so it
-  // shares the same per-frame iteration.
-  private tickEnemyAI(deltaSeconds: number) {
+  // Per-variant chase: speed + optional vertical bob for flying enemies.
+  // Shared one-sin-per-frame phase keeps costs flat even with many ghosts.
+  private tickEnemyAI(deltaSeconds: number, time: number) {
     this.player.head.getWorldPosition(this.tempPos);
-    const step = ENEMY_SPEED * deltaSeconds;
     for (const item of this.spawnedEntities.values()) {
       if (item.role !== 'enemy') continue;
+      const stats = enemyStats(item.type);
+
+      // Horizontal chase
       this.tempChase.set(
         this.tempPos.x - item.sprite.position.x,
         0,
         this.tempPos.z - item.sprite.position.z,
       );
       const dist = this.tempChase.length();
-      if (dist < 0.1) continue;
-      this.tempChase.multiplyScalar(step / dist);
-      item.sprite.position.x += this.tempChase.x;
-      item.sprite.position.z += this.tempChase.z;
+      if (dist > 0.1) {
+        const step = stats.speed * deltaSeconds;
+        this.tempChase.multiplyScalar(step / dist);
+        item.sprite.position.x += this.tempChase.x;
+        item.sprite.position.z += this.tempChase.z;
+      }
+
+      // Vertical bob — ghosts float and weave, ground units skip this.
+      if (stats.bobAmp > 0) {
+        item.sprite.position.y =
+          item.origin[1] + 0.5 + Math.sin(time * stats.bobSpeed) * stats.bobAmp;
+      }
     }
   }
 
@@ -615,6 +632,7 @@ export class PortalSystem extends createSystem({}) {
         break;
       case 'goal':
         this.score.value = this.score.peek() + GOAL_POINTS;
+        this.goalsCollected.value = this.goalsCollected.peek() + 1;
         FX.pickupGoal(rightPad ?? leftPad);
         this.checkWin();
         break;
@@ -629,16 +647,12 @@ export class PortalSystem extends createSystem({}) {
   }
 
   // End the round early when no goals remain. Only triggers if at least
-  // one goal existed at some point during this round — a round with zero
-  // goals is a survival/exploration round and should just run the clock.
-  private goalsAtRoundStart = 0;
+  // one goal existed at round start — a survival round (zero goals)
+  // should just run the clock.
   private checkWin() {
-    if (this.goalsAtRoundStart === 0) return;
-    let goalsLeft = 0;
-    for (const item of this.spawnedEntities.values()) {
-      if (item.role === 'goal') goalsLeft++;
-    }
-    if (goalsLeft === 0 && this.ws?.readyState === WebSocket.OPEN) {
+    if (this.goalsTotal.peek() === 0) return;
+    if (this.goalsCollected.peek() < this.goalsTotal.peek()) return;
+    if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'ROUND_END', reason: 'completed' }));
     }
   }
@@ -651,7 +665,7 @@ export class PortalSystem extends createSystem({}) {
     // Gameplay interactions only fire while the round is live. Gives the
     // planner time to place items before the contestant can grab them.
     if (roundRunning) {
-      this.tickEnemyAI(delta);
+      this.tickEnemyAI(delta, time);
       this.handleCollisions(delta);
     }
 

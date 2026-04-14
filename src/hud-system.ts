@@ -150,6 +150,8 @@ export class HUDSystem extends createSystem({}) {
     const endsAt  = GameState.roundEndsAt(g).peek();
     const score   = GameState.score(g).peek();
     const health  = GameState.playerHealth(g).peek();
+    const goalsTotal     = GameState.goalsTotal(g).peek();
+    const goalsCollected = GameState.goalsCollected(g).peek();
 
     const remaining = running
       ? Math.max(0, (endsAt - Date.now()) / 1000)
@@ -178,13 +180,16 @@ export class HUDSystem extends createSystem({}) {
     ctx.font = 'bold 64px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.fillText(`${mm}:${ss}`, 28, 66);
 
-    // Score
+    // Score readout — goal progress when this round has goals, otherwise
+    // raw score. Keeps the HUD from misleading on survival rounds.
     ctx.fillStyle = "#fbbf24";
     ctx.font = 'bold 44px "Apple Color Emoji", system-ui, sans-serif';
     ctx.fillText("⭐", 210, 64);
     ctx.fillStyle = "#f4f4f5";
     ctx.font = 'bold 52px ui-monospace, SFMono-Regular, Menlo, monospace';
-    ctx.fillText(String(score), 260, 66);
+    const scoreText =
+      goalsTotal > 0 ? `${goalsCollected}/${goalsTotal}` : String(score);
+    ctx.fillText(scoreText, 260, 66);
 
     // Health bar
     const barX = 340, barY = 48, barW = 148, barH = 28;

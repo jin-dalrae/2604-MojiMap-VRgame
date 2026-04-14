@@ -49,11 +49,42 @@ export const FIRE_RADIUS = 0.4;     // meters
 export const PICKUP_RADIUS = 0.5;   // meters — player head to item
 
 // Combat tuning
-export const ENEMY_HP = 3;
 export const ENEMY_DAMAGE_RADIUS = 0.6; // meters — enemy touch damages player
-export const ENEMY_DPS = 20;
-export const ENEMY_SPEED = 0.7;         // m/s, chase velocity
-export const ENEMY_KILL_POINTS = 2;
+
+// Per-variant stats. Lookup keyed by the portal's `item.type` string so
+// the portal can keep emoji picking simple and the game picks up flavor.
+// Unknown types fall back to ENEMY_DEFAULT (backwards-compat with any
+// older grid snapshots).
+export type EnemyStats = {
+  hp: number;
+  speed: number;         // m/s
+  dps: number;           // damage-per-second to player on touch
+  killPoints: number;    // score award on defeat
+  bobAmp: number;        // vertical bob amplitude (m) — 0 = grounded
+  bobSpeed: number;      // rad/s
+};
+
+export const ENEMY_DEFAULT: EnemyStats = {
+  hp: 3,
+  speed: 0.7,
+  dps: 20,
+  killPoints: 2,
+  bobAmp: 0,
+  bobSpeed: 0,
+};
+
+export const ENEMY_STATS: Record<string, EnemyStats> = {
+  // 🤖 Slow tank — soaks hits, hits hard on touch
+  robot: { hp: 4, speed: 0.55, dps: 20, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
+  // 👻 Floating, fast, fragile-ish — harder to hit because it weaves up/down
+  ghost: { hp: 2, speed: 1.1,  dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
+  // 💀 Glass cannon — dies to a single hit but sprints and bites hard
+  skull: { hp: 1, speed: 1.45, dps: 28, killPoints: 1, bobAmp: 0,    bobSpeed: 0   },
+};
+
+export function enemyStats(type: string): EnemyStats {
+  return ENEMY_STATS[type] ?? ENEMY_DEFAULT;
+}
 export const SWORD_RADIUS = 0.6;        // meters — grip-to-enemy
 export const SWORD_DAMAGE = 1;
 export const SWORD_COOLDOWN_MS = 350;
@@ -103,6 +134,11 @@ export const GameState = {
   equippedLeft: (g: Globals) => getOrInit<"sword" | null>(g, "equippedLeft", null),
   equippedRight:(g: Globals) => getOrInit<"gun" | null>(g, "equippedRight", null),
   roundResult:  (g: Globals) => getOrInit<RoundResult | null>(g, "roundResult", null),
+  // Goal progress. goalsTotal is the snapshot taken at ROUND_START; when
+  // it's 0, the round is a survival/exploration round and the HUD falls
+  // back to showing raw score instead of "X/Y".
+  goalsTotal:     (g: Globals) => getOrInit<number>(g, "goalsTotal", 0),
+  goalsCollected: (g: Globals) => getOrInit<number>(g, "goalsCollected", 0),
 };
 
 export const RESULT_DISPLAY_MS = 4500;
