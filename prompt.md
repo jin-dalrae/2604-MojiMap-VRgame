@@ -336,3 +336,9 @@ make it so you only get this ability if you pick up a poo item. add a poo emoji 
 ```
 the poo is coming out of th backside of the user. it needs to come out of the front
 ```
+
+## 2026-04-15T00:55:00Z
+
+```
+its not working now, the poo is not leting me pik it up. it should auto pick up like the gun does
+```

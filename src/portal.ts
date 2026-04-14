@@ -1440,6 +1440,7 @@ export class PortalSystem extends createSystem({}) {
   }
 
   private applyPickup(role: ItemRole) {
+    console.log('[Pickup]', role);
     const leftPad  = this.input.gamepads.left;
     const rightPad = this.input.gamepads.right;
     switch (role) {
