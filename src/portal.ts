@@ -12,6 +12,31 @@ import {
   DoubleSide,
   Object3D,
 } from "@iwsdk/core";
+import { signal, type Signal } from "@preact/signals-core";
+
+// ── Item roles ───────────────────────────────────────────────
+// Portal tags each GRID_PLACE with one of these; VR branches visuals
+// and (Phase 3) gameplay off the role rather than the specific emoji.
+type ItemRole =
+  | "weapon-sword"
+  | "weapon-gun"
+  | "goal"
+  | "powerup"
+  | "obstacle-damage"
+  | "enemy"
+  | "decor";
+
+function isPickup(role: ItemRole): boolean {
+  return (
+    role === "weapon-sword" ||
+    role === "weapon-gun" ||
+    role === "goal" ||
+    role === "powerup"
+  );
+}
+function isHazard(role: ItemRole): boolean {
+  return role === "obstacle-damage" || role === "enemy";
+}
 
 // ── Grid coordinate mapping ──────────────────────────────────
 // Portal grid: 20 cols × 10 rows
@@ -22,14 +47,40 @@ function gridToWorld(row: number, col: number): [number, number, number] {
 }
 
 // ── Emoji sprite factory ─────────────────────────────────────
-// Same pipeline as the broadcast view: render the emoji character onto a
-// CanvasTexture and wrap it in a Three.js Sprite so it always faces the
-// headset. Works in WebXR — sprites are camera-locked quads.
-function makeEmojiSprite(emoji: string, size = 1.1): Sprite {
+// Render the emoji onto a CanvasTexture wrapped in a Three.js Sprite so
+// it always faces the headset. For pickups we also paint a soft white
+// radial halo underneath — reads as "collectible" at a glance. Hazards
+// get a subtle red aura so players know to keep their distance.
+function makeEmojiSprite(
+  emoji: string,
+  role: ItemRole = "decor",
+  size = 1.1,
+): Sprite {
   const canvas = document.createElement("canvas");
   canvas.width = 128;
   canvas.height = 128;
   const ctx = canvas.getContext("2d")!;
+
+  if (isPickup(role)) {
+    // Soft white disc behind emoji — affordance for "grab me"
+    const grad = ctx.createRadialGradient(64, 64, 8, 64, 64, 60);
+    grad.addColorStop(0, "rgba(255,255,255,0.95)");
+    grad.addColorStop(0.55, "rgba(255,255,255,0.55)");
+    grad.addColorStop(1, "rgba(255,255,255,0.0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(64, 64, 60, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (isHazard(role)) {
+    // Red glow — danger signal, no "pickup" affordance
+    const grad = ctx.createRadialGradient(64, 64, 12, 64, 64, 60);
+    grad.addColorStop(0, "rgba(239,68,68,0.55)");
+    grad.addColorStop(1, "rgba(239,68,68,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(64, 64, 60, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.font = '108px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
   ctx.textAlign = "center";
@@ -41,7 +92,7 @@ function makeEmojiSprite(emoji: string, size = 1.1): Sprite {
   const material = new SpriteMaterial({
     map: texture,
     transparent: true,
-    alphaTest: 0.1,
+    alphaTest: 0.05,
     depthWrite: true,
   });
   const sprite = new Sprite(material);
@@ -73,17 +124,27 @@ type AvatarRecord = {
 };
 
 // ── System ───────────────────────────────────────────────────
+type SpawnedItem = {
+  entity: { dispose(): void };
+  sprite: Sprite;
+  role: ItemRole;
+  baseSize: number;
+};
+
 export class PortalSystem extends createSystem({}) {
   private ws: WebSocket | null = null;
-  private spawnedEntities = new Map<
-    string,
-    { entity: { dispose(): void }; sprite: Sprite }
-  >();
+  private spawnedEntities = new Map<string, SpawnedItem>();
   private avatars = new Map<string, AvatarRecord>();
   private lastPosSend = 0;
   private tempPos!: Vector3;
   private tempFwd!: Vector3;
   private userId: string | null = null;
+
+  // Round state. Exposed via `world.globals` so future systems
+  // (weapons, HUD, enemy AI) can peek/subscribe without coupling to
+  // the WebSocket connection.
+  private roundRunning!: Signal<boolean>;
+  private roundEndsAt!: Signal<number>; // ms epoch, 0 when idle
   // spaceId is the Quest Shared Spaces XRSharedReferenceSpace UUID when available.
   // Set externally (e.g. by a future SharedSpaceSystem that requests the "shared"
   // feature and listens for the reference space UUID); forwarded on every update.
@@ -98,6 +159,15 @@ export class PortalSystem extends createSystem({}) {
   init() {
     this.tempPos = new Vector3();
     this.tempFwd = new Vector3();
+
+    // Publish round signals so other systems can read them without
+    // needing a ref to PortalSystem. Peek in hot paths; subscribe for edges.
+    const globals = this.world.globals as Record<string, unknown>;
+    this.roundRunning = (globals.roundRunning as Signal<boolean>) ?? signal(false);
+    this.roundEndsAt = (globals.roundEndsAt as Signal<number>) ?? signal(0);
+    globals.roundRunning = this.roundRunning;
+    globals.roundEndsAt = this.roundEndsAt;
+
     this.connectWS();
   }
 
@@ -138,6 +208,26 @@ export class PortalSystem extends createSystem({}) {
         for (const [uid, user] of Object.entries(msg.users as Record<string, any>)) {
           if (uid !== this.userId) this.updateAvatar(uid, user.position);
         }
+        // Adopt any round already in progress on the server.
+        if (msg.round && msg.round.endsAt > Date.now()) {
+          this.roundEndsAt.value = msg.round.endsAt;
+          this.roundRunning.value = true;
+        } else {
+          this.roundEndsAt.value = 0;
+          this.roundRunning.value = false;
+        }
+        break;
+
+      case 'ROUND_START':
+        console.log(`[Round] Started — ends at ${new Date(msg.endsAt).toISOString()}`);
+        this.roundEndsAt.value = msg.endsAt;
+        this.roundRunning.value = true;
+        break;
+
+      case 'ROUND_END':
+        console.log(`[Round] Ended (${msg.reason})`);
+        this.roundEndsAt.value = 0;
+        this.roundRunning.value = false;
         break;
 
       case 'GRID_UPDATE':
@@ -191,7 +281,7 @@ export class PortalSystem extends createSystem({}) {
     root.add(head);
 
     // Emoji face — billboarded sprite above head
-    const face = makeEmojiSprite('🧑', 0.5);
+    const face = makeEmojiSprite('🧑', 'decor', 0.5);
     face.position.y = 1.55;
     root.add(face);
 
@@ -244,15 +334,22 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
-  private spawnItem(key: string, item: { type: string; icon: string }) {
+  private spawnItem(
+    key: string,
+    item: { type: string; icon: string; role?: ItemRole },
+  ) {
     const [row, col] = key.split(',').map(Number);
     const [x, y, z] = gridToWorld(row, col);
 
-    const sprite = makeEmojiSprite(item.icon, 1.1);
+    // Role drives halo/aura in the canvas. Older items placed before the
+    // portal started tagging roles fall back to decor (no halo).
+    const role: ItemRole = item.role ?? 'decor';
+    const baseSize = 1.1;
+    const sprite = makeEmojiSprite(item.icon, role, baseSize);
     sprite.position.set(x, y, z);
 
     const entity = this.world.createTransformEntity(sprite);
-    this.spawnedEntities.set(key, { entity, sprite });
+    this.spawnedEntities.set(key, { entity, sprite, role, baseSize });
   }
 
   private despawnItem(key: string) {
@@ -265,7 +362,45 @@ export class PortalSystem extends createSystem({}) {
     this.spawnedEntities.delete(key);
   }
 
+  // Per-frame item animation: pulse pickups, flicker hazards when a round
+  // is active. Idle state leaves items at their static base transform.
+  private animateItems(time: number, roundRunning: boolean) {
+    // Shared phases — one sin per frame, not per item.
+    const pulse = Math.sin(time * 3.5);        // pickup scale oscillation
+    const bob   = Math.sin(time * 1.8) * 0.05; // pickup vertical bob
+    const flick = 0.75 + Math.random() * 0.25; // hazard opacity jitter
+
+    for (const item of this.spawnedEntities.values()) {
+      const s = item.sprite;
+      const mat = s.material as SpriteMaterial;
+
+      if (!roundRunning) {
+        // Snap to neutral state so the idle view stays calm.
+        s.scale.set(item.baseSize, item.baseSize, 1);
+        s.position.y = 0.55;
+        mat.opacity = 1;
+        continue;
+      }
+
+      if (isPickup(item.role)) {
+        const scale = item.baseSize * (1 + 0.08 * pulse);
+        s.scale.set(scale, scale, 1);
+        s.position.y = 0.55 + bob;
+        mat.opacity = 1;
+      } else if (isHazard(item.role)) {
+        // Fire/enemies read as "alive" via opacity flicker. Steady scale
+        // keeps the animation from feeling seizure-y.
+        mat.opacity = flick;
+        s.position.y = 0.55;
+      }
+    }
+  }
+
   update() {
+    const time = performance.now() / 1000;
+    const roundRunning = this.roundRunning.peek();
+    this.animateItems(time, roundRunning);
+
     // Send VR player head position at ~10 Hz
     const now = performance.now();
     if (now - this.lastPosSend < 100) return;
