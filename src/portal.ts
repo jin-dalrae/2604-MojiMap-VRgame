@@ -15,6 +15,7 @@ import {
   Object3D,
   LocomotionEnvironment,
   EnvironmentType,
+  setWorldPosition,
 } from "@iwsdk/core";
 import { type Signal } from "@preact/signals-core";
 import { FX } from "./game-fx.js";
@@ -190,6 +191,7 @@ export class PortalSystem extends createSystem({}) {
   // the destination warp until the player physically walks out of it.
   private warpCooldownUntil = 0;
   private lockedWarpKey: string | null = null;
+  private _warnedSingleWarp = false;
   private userId: string | null = null;
 
   // Round/game state signals — shared via world.globals. PortalSystem
@@ -865,15 +867,26 @@ export class PortalSystem extends createSystem({}) {
     FX.roundLose(); // personal death cue — everyone else plays on
   }
 
-  // Teleport math — moves XROrigin so the player's head lands at `target`
-  // on the XZ plane. Y is left alone so floor-level is preserved.
+  // Teleport places the XROrigin so the player's head ends up at `target`.
+  // Uses `setWorldPosition` to handle any parent-transform chain IWSDK
+  // might introduce, and compensates for the tracked head offset so the
+  // head lands near the spawn point rather than wherever the rig origin
+  // happens to be.
   private teleportPlayerTo(targetX: number, targetZ: number) {
-    const headWorld = this.tempPos;
-    this.player.head.getWorldPosition(headWorld);
+    // Current world positions of origin + head.
     const originWorld = this.tempChase;
     this.player.getWorldPosition(originWorld);
-    this.player.position.x = targetX - (headWorld.x - originWorld.x);
-    this.player.position.z = targetZ - (headWorld.z - originWorld.z);
+    const headWorld = this.tempPos;
+    this.player.head.getWorldPosition(headWorld);
+    // Head's world-space offset from the origin.
+    const dx = headWorld.x - originWorld.x;
+    const dz = headWorld.z - originWorld.z;
+    // Desired origin world position: target minus that offset.
+    originWorld.set(targetX - dx, this.player.position.y, targetZ - dz);
+    setWorldPosition(this.player, originWorld);
+    console.log(
+      `[Teleport] Player → (${targetX.toFixed(2)}, ${targetZ.toFixed(2)})`,
+    );
   }
 
   // Pick a deterministic spawn: hash userId into the spawn list so two
@@ -917,17 +930,27 @@ export class PortalSystem extends createSystem({}) {
     const r2 = WARP_RADIUS * WARP_RADIUS;
     const now = performance.now();
 
-    // Collect all warps once — we need both "am I inside one?" and
-    // "give me a random destination" lookups.
+    // Collect all warps once. Accept either role==='warp' OR legacy
+    // type strings ('warp', 'portal') so items placed before the role
+    // mapping existed still teleport.
     const warps: { key: string; pos: Vector3 }[] = [];
     for (const [key, item] of this.spawnedEntities) {
-      if (item.role === 'warp') warps.push({ key, pos: item.object3D.position });
+      const isWarp =
+        item.role === 'warp' ||
+        item.type === 'warp' ||
+        item.type === 'portal';
+      if (isWarp) warps.push({ key, pos: item.object3D.position });
     }
 
     // Clear the locked warp once the player has stepped out of its radius.
     if (this.lockedWarpKey) {
       const locked = this.spawnedEntities.get(this.lockedWarpKey);
-      if (!locked || locked.role !== 'warp') {
+      const stillWarp = locked && (
+        locked.role === 'warp' ||
+        locked.type === 'warp' ||
+        locked.type === 'portal'
+      );
+      if (!stillWarp) {
         this.lockedWarpKey = null;
       } else {
         const d2 = this.tempPos.distanceToSquared(locked.object3D.position);
@@ -936,7 +959,15 @@ export class PortalSystem extends createSystem({}) {
     }
 
     if (now < this.warpCooldownUntil) return;
-    if (warps.length < 2) return; // need at least two to make a trip
+    if (warps.length < 2) {
+      // One-off log — helps users notice they need ≥ 2 warps to teleport.
+      if (warps.length === 1 && !this._warnedSingleWarp) {
+        console.log('[Warp] Only 1 warp placed — need at least 2 for teleport.');
+        this._warnedSingleWarp = true;
+      }
+      return;
+    }
+    this._warnedSingleWarp = false;
 
     // Find the warp the player is currently inside (that isn't locked)
     let entered: { key: string; pos: Vector3 } | null = null;
