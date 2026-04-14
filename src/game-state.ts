@@ -13,6 +13,7 @@ export type ItemRole =
   | "powerup"
   | "obstacle-damage"
   | "enemy"
+  | "warp"
   | "decor";
 
 export function isPickup(role: ItemRole): boolean {
@@ -93,6 +94,10 @@ export const PROJECTILE_LIFE_MS = 2500;
 export const PROJECTILE_RADIUS = 0.25;  // collision radius with enemies
 export const PROJECTILE_DAMAGE = 1;
 export const GUN_COOLDOWN_MS = 220;     // rate-limit trigger spam
+
+// Warp ("🌀") teleport tuning
+export const WARP_RADIUS = 0.6;         // meters — player head triggers warp
+export const WARP_COOLDOWN_MS = 1500;   // global debounce after teleport
 
 // Cross-system callbacks registered on `world.globals`. Systems that
 // own data expose these; consumers call without knowing the owner.

@@ -290,6 +290,10 @@
       .cell[data-role="enemy"] {
         box-shadow: inset 0 0 0 1px rgba(239,68,68,0.55), 0 0 6px rgba(239,68,68,0.25);
       }
+      .cell[data-role="warp"],
+      .item[data-role="warp"] {
+        box-shadow: inset 0 0 0 1px rgba(168,85,247,0.5), 0 0 8px rgba(168,85,247,0.3);
+      }
       .item[data-role="weapon-sword"],
       .item[data-role="weapon-gun"],
       .item[data-role="goal"],
@@ -665,11 +669,11 @@
       <div class="item" data-type="skull"    data-icon="💀" data-label="Skull">    <span class="item-icon">💀</span><span class="item-label">Skull</span></div>
       <div class="palette-divider"></div>
       <span class="palette-section">Decor</span>
-      <div class="item" data-type="cube"     data-icon="🟦" data-label="Cube">     <span class="item-icon">🟦</span><span class="item-label">Cube</span></div>
+      <div class="item" data-type="cube"     data-icon="🟦" data-label="Wall">     <span class="item-icon">🟦</span><span class="item-label">Wall</span></div>
       <div class="item" data-type="chair"    data-icon="🪑" data-label="Chair">    <span class="item-icon">🪑</span><span class="item-label">Chair</span></div>
       <div class="item" data-type="plant"    data-icon="🌿" data-label="Plant">    <span class="item-icon">🌿</span><span class="item-label">Plant</span></div>
       <div class="item" data-type="lamp"     data-icon="💡" data-label="Lamp">     <span class="item-icon">💡</span><span class="item-label">Lamp</span></div>
-      <div class="item" data-type="portal"   data-icon="🌀" data-label="Portal">   <span class="item-icon">🌀</span><span class="item-label">Portal</span></div>
+      <div class="item" data-type="warp"     data-icon="🌀" data-label="Warp">     <span class="item-icon">🌀</span><span class="item-label">Warp</span></div>
       <div class="item" data-type="music"    data-icon="🎵" data-label="Music">    <span class="item-icon">🎵</span><span class="item-label">Music</span></div>
     </div>
 
@@ -690,11 +694,11 @@
         <div class="item" data-type="ghost"    data-icon="👻" data-label="Ghost">    <span class="item-icon">👻</span><span class="item-label">Ghost</span></div>
         <div class="item" data-type="skull"    data-icon="💀" data-label="Skull">    <span class="item-icon">💀</span><span class="item-label">Skull</span></div>
         <div class="palette-section">Decor</div>
-        <div class="item" data-type="cube"     data-icon="🟦" data-label="Cube">     <span class="item-icon">🟦</span><span class="item-label">Cube</span></div>
+        <div class="item" data-type="cube"     data-icon="🟦" data-label="Wall">     <span class="item-icon">🟦</span><span class="item-label">Wall</span></div>
         <div class="item" data-type="chair"    data-icon="🪑" data-label="Chair">    <span class="item-icon">🪑</span><span class="item-label">Chair</span></div>
         <div class="item" data-type="plant"    data-icon="🌿" data-label="Plant">    <span class="item-icon">🌿</span><span class="item-label">Plant</span></div>
         <div class="item" data-type="lamp"     data-icon="💡" data-label="Lamp">     <span class="item-icon">💡</span><span class="item-label">Lamp</span></div>
-        <div class="item" data-type="portal"   data-icon="🌀" data-label="Portal">   <span class="item-icon">🌀</span><span class="item-label">Portal</span></div>
+        <div class="item" data-type="warp"     data-icon="🌀" data-label="Warp">     <span class="item-icon">🌀</span><span class="item-label">Warp</span></div>
         <div class="item" data-type="music"    data-icon="🎵" data-label="Music">    <span class="item-icon">🎵</span><span class="item-label">Music</span></div>
       </div>
 
@@ -731,6 +735,7 @@
         '❤️': 'powerup',
         '🔥': 'obstacle-damage',
         '🤖': 'enemy', '👻': 'enemy', '💀': 'enemy',
+        '🌀': 'warp',
         // everything else → 'decor' (falls through)
       };
       function roleFor(icon) { return ROLE_BY_ICON[icon] || 'decor'; }

@@ -37,6 +37,8 @@ import {
   SWORD_RADIUS,
   SWORD_DAMAGE,
   SWORD_COOLDOWN_MS,
+  WARP_RADIUS,
+  WARP_COOLDOWN_MS,
   type ItemRole,
 } from "./game-state.js";
 
@@ -69,6 +71,16 @@ function makeEmojiSprite(
     grad.addColorStop(0, "rgba(255,255,255,0.95)");
     grad.addColorStop(0.55, "rgba(255,255,255,0.55)");
     grad.addColorStop(1, "rgba(255,255,255,0.0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(64, 64, 60, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (role === "warp") {
+    // Purple swirl aura — reads as "portal/teleport", distinct from pickups
+    const grad = ctx.createRadialGradient(64, 64, 10, 64, 64, 60);
+    grad.addColorStop(0, "rgba(168,85,247,0.85)");
+    grad.addColorStop(0.6, "rgba(168,85,247,0.35)");
+    grad.addColorStop(1, "rgba(168,85,247,0.0)");
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(64, 64, 60, 0, Math.PI * 2);
@@ -163,6 +175,12 @@ export class PortalSystem extends createSystem({}) {
   // Cooldown gates — keeps sword from deleting enemies in a single tick
   // by virtue of being inside their hit radius for several frames.
   private lastSwordHitAt = 0;
+  // Warp cooldown + exclusion — after a teleport the player keeps drifting
+  // inside the destination warp's radius for a frame or two. We block
+  // re-triggers globally for WARP_COOLDOWN_MS, and additionally exclude
+  // the destination warp until the player physically walks out of it.
+  private warpCooldownUntil = 0;
+  private lockedWarpKey: string | null = null;
   private userId: string | null = null;
 
   // Round/game state signals — shared via world.globals. PortalSystem
@@ -570,6 +588,12 @@ export class PortalSystem extends createSystem({}) {
         s.scale.set(scale, scale, 1);
         s.position.y = 0.55 + bob;
         mat.opacity = 1;
+      } else if (item.role === 'warp') {
+        // Slow breathing pulse + taller hover — reads as "active portal"
+        const scale = item.baseSize * (1 + 0.12 * pulse);
+        s.scale.set(scale, scale, 1);
+        s.position.y = 0.7 + bob * 0.8;
+        mat.opacity = 0.9 + 0.1 * Math.sin(time * 5);
       } else if (isHazard(item.role)) {
         // Fire/enemies read as "alive" via opacity flicker. Steady scale
         // keeps the animation from feeling seizure-y.
@@ -692,6 +716,71 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
+  // Warp teleport — active any time, not gated on roundRunning. Walking
+  // into a 🌀 sends the player to a random *other* warp on the grid.
+  //
+  // The re-trigger problem (player lands inside another warp and would
+  // chain instantly) is solved two ways, together:
+  //   1) Global cooldown blocks any warp for WARP_COOLDOWN_MS.
+  //   2) The destination warp is *locked* until the player physically
+  //      leaves its radius — so even after cooldown, you won't bounce
+  //      back unless you move.
+  private tickWarps() {
+    this.player.head.getWorldPosition(this.tempPos);
+    const r2 = WARP_RADIUS * WARP_RADIUS;
+    const now = performance.now();
+
+    // Collect all warps once — we need both "am I inside one?" and
+    // "give me a random destination" lookups.
+    const warps: { key: string; pos: Vector3 }[] = [];
+    for (const [key, item] of this.spawnedEntities) {
+      if (item.role === 'warp') warps.push({ key, pos: item.object3D.position });
+    }
+
+    // Clear the locked warp once the player has stepped out of its radius.
+    if (this.lockedWarpKey) {
+      const locked = this.spawnedEntities.get(this.lockedWarpKey);
+      if (!locked || locked.role !== 'warp') {
+        this.lockedWarpKey = null;
+      } else {
+        const d2 = this.tempPos.distanceToSquared(locked.object3D.position);
+        if (d2 > r2) this.lockedWarpKey = null;
+      }
+    }
+
+    if (now < this.warpCooldownUntil) return;
+    if (warps.length < 2) return; // need at least two to make a trip
+
+    // Find the warp the player is currently inside (that isn't locked)
+    let entered: { key: string; pos: Vector3 } | null = null;
+    for (const w of warps) {
+      if (w.key === this.lockedWarpKey) continue;
+      if (this.tempPos.distanceToSquared(w.pos) < r2) { entered = w; break; }
+    }
+    if (!entered) return;
+
+    // Pick a random destination that isn't the one we're inside.
+    const candidates = warps.filter((w) => w.key !== entered!.key);
+    const dest = candidates[Math.floor(Math.random() * candidates.length)];
+
+    // Teleport by moving the XROrigin such that the player's head lands
+    // at the destination. We don't touch Y so the player stays at the
+    // floor level the locomotion system maintained.
+    const headWorld = this.tempPos;             // already set above
+    const originWorld = this.tempChase;         // reuse scratch
+    this.player.getWorldPosition(originWorld);
+    const dx = dest.pos.x - (headWorld.x - originWorld.x);
+    const dz = dest.pos.z - (headWorld.z - originWorld.z);
+    this.player.position.x = dx;
+    this.player.position.z = dz;
+
+    this.warpCooldownUntil = now + WARP_COOLDOWN_MS;
+    this.lockedWarpKey = dest.key;
+    // Either hand works — prefer right if both are connected.
+    FX.warp(this.input.gamepads.right ?? this.input.gamepads.left);
+    console.log(`[Warp] ${entered.key} → ${dest.key}`);
+  }
+
   private applyPickup(role: ItemRole) {
     const leftPad  = this.input.gamepads.left;
     const rightPad = this.input.gamepads.right;
@@ -742,6 +831,9 @@ export class PortalSystem extends createSystem({}) {
       this.tickEnemyAI(delta, time);
       this.handleCollisions(delta);
     }
+    // Warps are spatial navigation, not gameplay — active outside rounds
+    // too so the designer can test teleport geometry.
+    this.tickWarps();
 
     // Send VR player head position at ~10 Hz
     const now = performance.now();
