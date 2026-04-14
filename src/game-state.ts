@@ -134,8 +134,8 @@ export const DAMAGE_FLASH_MS = 480; // red overlay fade duration
 // Bird (🦅) — flies around erratically, takes 2 gun hits, doesn't
 // hurt the player, counts as a goal-style point on kill.
 export const BIRD_HP = 2;
-export const BIRD_SPEED = 1.3;                // m/s horizontal baseline
-export const BIRD_FLIGHT_HEIGHT = 1.9;        // hover altitude
+export const BIRD_SPEED = 2.0;                // m/s horizontal baseline (bumped for livelier movement)
+export const BIRD_FLIGHT_HEIGHT = 5.7;        // 3× higher so they really soar above the play area
 export const BIRD_FLAP_AMP = 0.18;            // fast wing bob
 export const BIRD_FLAP_FREQ = 11;             // rad/s
 export const BIRD_DRIFT_AMP = 0.45;           // slow vertical drift
@@ -144,6 +144,8 @@ export const BIRD_TURN_P_PER_SEC = 1.8;       // random sharp-turn frequency
 export const BIRD_FALL_SPEED = 3.5;           // m/s downward when dead
 export const BIRD_HIT_FLASH_MS = 260;         // red glow duration after a non-lethal hit
 export const BIRD_POINTS = 1;                 // score on kill, same as a star
+// Slightly forgiving gun hitbox — birds are small, high, and erratic.
+export const BIRD_HIT_RADIUS = 0.85;
 
 // Cross-system callbacks registered on `world.globals`. Systems that
 // own data expose these; consumers call without knowing the owner.

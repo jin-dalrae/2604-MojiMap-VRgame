@@ -15,6 +15,7 @@ import {
   Object3D,
   LocomotionEnvironment,
   EnvironmentType,
+  AdditiveBlending,
   setWorldPosition,
 } from "@iwsdk/core";
 import { type Signal } from "@preact/signals-core";
@@ -55,6 +56,7 @@ import {
   BIRD_FALL_SPEED,
   BIRD_HIT_FLASH_MS,
   BIRD_POINTS,
+  BIRD_HIT_RADIUS,
   enemyBehavior,
   type ItemRole,
 } from "./game-state.js";
@@ -158,6 +160,16 @@ type AvatarRecord = {
 const WALL_WIDTH  = 0.95;   // m — leaves a narrow gap between grid cells
 const WALL_HEIGHT = 2.2;
 const WALL_COLOR  = 0x3b82f6; // Tailwind blue-500 — matches the 🟦 emoji
+// Pre-round: walls are rendered as thin floor tiles so players can see
+// the layout but walk through them to reach the starting-point chair.
+// On ROUND_START, they pop up to full height + become solid colliders.
+const WALL_IDLE_SCALE_Y = 0.02;
+
+// Chair beacon — a glowing translucent column that shoots up above the
+// starting-point chair so players can spot it from anywhere on the grid.
+const CHAIR_BEACON_HEIGHT = 40;
+const CHAIR_BEACON_RADIUS = 0.22;
+const CHAIR_BEACON_COLOR  = 0x10b981; // green, matches the 'spawn' tint
 
 type SpawnedItem = {
   entity: { dispose(): void };
@@ -186,6 +198,9 @@ type SpawnedItem = {
   birdState: 'flying' | 'falling' | 'grounded';
   // Red flash window — used by birds for the non-lethal hit glow.
   hitFlashUntil: number; // ms epoch
+  // Optional companion mesh — chairs mount a glowing beacon above them
+  // so players can find the spawn from anywhere. Disposed with the item.
+  extra?: Mesh;
 };
 
 export class PortalSystem extends createSystem({}) {
@@ -276,6 +291,58 @@ export class PortalSystem extends createSystem({}) {
 
     this.connectWS();
     this.setupKeyboard();
+
+    // Walls toggle between flat preview tiles (pre-round) and full-height
+    // solid colliders (during round). Subscribe to the roundRunning signal
+    // so every wall updates in lockstep; new walls placed mid-state adopt
+    // the current state on spawn.
+    this.cleanupFuncs.push(
+      this.roundRunning.subscribe((running) => {
+        for (const item of this.spawnedEntities.values()) {
+          if (item.kind === 'wall') this.setWallState(item, running);
+        }
+      }),
+    );
+  }
+
+  // Toggle a single wall between preview (flat + walk-through) and
+  // active (tall + solid collider). LocomotionEnvironment is added or
+  // removed on the entity so the locomotion system knows whether to
+  // treat the mesh as an obstacle.
+  private setWallState(item: SpawnedItem, running: boolean) {
+    if (item.kind !== 'wall') return;
+    const mesh = item.object3D as Mesh;
+    if (running) {
+      mesh.scale.y = 1;
+      mesh.position.set(item.origin[0], WALL_HEIGHT / 2, item.origin[2]);
+      const ent = item.entity as unknown as {
+        hasComponent?: (c: unknown) => boolean;
+        addComponent: (c: unknown, v?: Record<string, unknown>) => unknown;
+      };
+      // Only add the collider component if it isn't already attached —
+      // spawning mid-round should result in a single attachment.
+      if (!ent.hasComponent || !ent.hasComponent(LocomotionEnvironment)) {
+        ent.addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
+      }
+    } else {
+      mesh.scale.y = WALL_IDLE_SCALE_Y;
+      mesh.position.set(
+        item.origin[0],
+        (WALL_HEIGHT * WALL_IDLE_SCALE_Y) / 2,
+        item.origin[2],
+      );
+      const ent = item.entity as unknown as {
+        hasComponent?: (c: unknown) => boolean;
+        removeComponent?: (c: unknown) => unknown;
+      };
+      if (ent.removeComponent && (!ent.hasComponent || ent.hasComponent(LocomotionEnvironment))) {
+        try {
+          ent.removeComponent(LocomotionEnvironment);
+        } catch {
+          // removeComponent throws if component isn't present; ignore.
+        }
+      }
+    }
   }
 
   // Browser/keyboard shortcuts for testing in the emulator (the real
@@ -353,27 +420,32 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
-  // Nearest hittable target within squared radius, or null. Birds count
-  // as targets too — they're killable by the gun like enemies. Grounded
-  // dead birds are skipped so droplets don't re-hit the corpse.
+  // Nearest hittable target within its effective hit radius, or null.
+  // Birds use a larger BIRD_HIT_RADIUS because they're small, fast,
+  // and high up — the stock projectile radius would make them nearly
+  // unhittable. Ground enemies use the incoming r2 as usual.
   private findEnemyAt(x: number, y: number, z: number, r2: number): string | null {
+    const birdR2 = BIRD_HIT_RADIUS * BIRD_HIT_RADIUS;
     let bestKey: string | null = null;
-    let bestD2 = r2;
+    let bestScore = Infinity;
     for (const [key, item] of this.spawnedEntities) {
-      const isTarget =
-        item.role === 'enemy' ||
-        (item.role === 'bird' && item.birdState === 'flying');
-      if (!isTarget) continue;
+      const isEnemy = item.role === 'enemy';
+      const isBird  = item.role === 'bird' && item.birdState === 'flying';
+      if (!isEnemy && !isBird) continue;
+      const effectiveR2 = isBird ? birdR2 : r2;
+
       const dx = item.object3D.position.x - x;
-      // Birds fly at altitude — include Y so droplets have to actually
-      // be going up at the bird to land a hit. For grounded enemies
-      // the low Y drift is forgiven.
-      const dy =
-        item.role === 'bird' ? item.object3D.position.y - y : 0;
+      const dy = isBird ? item.object3D.position.y - y : 0;
       const dz = item.object3D.position.z - z;
       const d2 = dx * dx + dy * dy + dz * dz;
-      if (d2 < bestD2) {
-        bestD2 = d2;
+      if (d2 > effectiveR2) continue;
+
+      // Rank by "fraction of own hit radius used" so a clean shot at a
+      // small enemy beats a sloppy graze on a bird when both are in
+      // range of the same droplet.
+      const score = d2 / effectiveR2;
+      if (score < bestScore) {
+        bestScore = score;
         bestKey = key;
       }
     }
@@ -679,8 +751,11 @@ export class PortalSystem extends createSystem({}) {
     const baseSize = 1.1;
 
     // 🟦 cubes become real 3D walls — tall blocks the player can't
-    // pass through and that visually carve up the play area. Every
-    // other item stays a billboarded sprite.
+    // pass through and that visually carve up the play area.
+    //
+    // Pre-round state is a thin blue floor tile (scaled down on Y +
+    // collider omitted) so players can walk freely to the chair to
+    // start the game. setWallState() promotes them on ROUND_START.
     if (type === 'cube') {
       const wall = new Mesh(
         new BoxGeometry(WALL_WIDTH, WALL_HEIGHT, WALL_WIDTH),
@@ -690,12 +765,7 @@ export class PortalSystem extends createSystem({}) {
           metalness: 0.1,
         }),
       );
-      wall.position.set(x, WALL_HEIGHT / 2, z);
-      // LocomotionEnvironment makes the mesh a collider for the
-      // locomotion system so the player can't walk through it.
-      const entity = this.world
-        .createTransformEntity(wall)
-        .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
+      const entity = this.world.createTransformEntity(wall);
       this.spawnedEntities.set(key, {
         entity,
         object3D: wall,
@@ -709,6 +779,7 @@ export class PortalSystem extends createSystem({}) {
         heading: 0, radius: 0, omega: 0, phase: 0,
         birdState: 'flying', hitFlashUntil: 0,
       });
+      this.setWallState(this.spawnedEntities.get(key)!, this.roundRunning.peek());
       return;
     }
 
@@ -741,6 +812,35 @@ export class PortalSystem extends createSystem({}) {
       (sprite.material as SpriteMaterial).rotation = 0; // right-side up
     }
 
+    // Starting-point chairs get a glowing beacon shooting up to the sky
+    // so players can locate them from anywhere before the round starts.
+    // Tracked as a separate mesh (extra) so we can dispose it with the
+    // item without tangling the sprite's lifecycle.
+    let extra: Mesh | undefined;
+    if (role === 'spawn' || type === 'chair') {
+      const beacon = new Mesh(
+        new CylinderGeometry(
+          CHAIR_BEACON_RADIUS,
+          CHAIR_BEACON_RADIUS,
+          CHAIR_BEACON_HEIGHT,
+          20,
+          1,
+          true,
+        ),
+        new MeshBasicMaterial({
+          color: CHAIR_BEACON_COLOR,
+          transparent: true,
+          opacity: 0.35,
+          blending: AdditiveBlending,
+          side: DoubleSide,
+          depthWrite: false,
+        }),
+      );
+      beacon.position.set(x, CHAIR_BEACON_HEIGHT / 2, z);
+      this.scene.add(beacon);
+      extra = beacon;
+    }
+
     this.spawnedEntities.set(key, {
       entity,
       object3D: sprite,
@@ -754,6 +854,7 @@ export class PortalSystem extends createSystem({}) {
       heading, radius, omega, phase,
       birdState: 'flying',
       hitFlashUntil: 0,
+      extra,
     });
   }
 
@@ -770,6 +871,13 @@ export class PortalSystem extends createSystem({}) {
       const m = mesh.material;
       if (Array.isArray(m)) m.forEach((mm) => mm.dispose?.());
       else (m as MeshStandardMaterial).dispose?.();
+    }
+    if (record.extra) {
+      this.scene.remove(record.extra);
+      record.extra.geometry.dispose();
+      const m = record.extra.material;
+      if (Array.isArray(m)) m.forEach((mm) => mm.dispose?.());
+      else (m as MeshBasicMaterial).dispose?.();
     }
     record.entity.dispose();
     this.spawnedEntities.delete(key);
