@@ -156,6 +156,17 @@ export const WOOD_HIT_FLASH_MS = 260;      // shared with bird-style tint flash
 // Sword swing — manual now (no more auto-proximity damage). Keyboard E
 // and the left controller's trigger both dispatch a swing.
 export const SWORD_SWING_MS = 300;
+// Contact model: the tip has to be moving > SWORD_MIN_SPEED (m/s) to
+// register damage. A still sword does nothing; an arm swing or the
+// E-key animation both produce enough velocity to count.
+export const SWORD_MIN_SPEED = 1.5;
+// Per-target post-hit cooldown so one swing doesn't chain 10 hits on
+// the same enemy while the tip sweeps through its hitbox.
+export const SWORD_HIT_COOLDOWN_MS = 380;
+// Knockback — robot + ghost fly back briefly; skull (circle-motion) is
+// immune so the push doesn't look weird against its orbit.
+export const SWORD_KNOCKBACK_SPEED = 3.5;   // m/s, decays fast
+export const SWORD_KNOCKBACK_MS = 340;
 
 // Cross-system callbacks registered on `world.globals`. Systems that
 // own data expose these; consumers call without knowing the owner.

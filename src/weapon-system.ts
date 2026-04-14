@@ -25,7 +25,7 @@ import { FX } from "./game-fx.js";
 
 // Factories kept tiny on purpose — these are placeholder shapes that
 // read clearly in VR without asset loading. Swap for GLTFs later.
-function makeSword(): Group {
+function makeSword(): { group: Group; tip: Object3D } {
   const group = new Group();
 
   // Blade — extends forward from the grip (controller-local -Z)
@@ -52,7 +52,13 @@ function makeSword(): Group {
   guard.position.set(0, 0, 0);
   group.add(guard);
 
-  return group;
+  // Invisible tip marker — PortalSystem reads this Object3D's world
+  // position each frame to compute velocity + run contact checks.
+  const tip = new Object3D();
+  tip.position.set(0, 0, -0.6); // blade end in sword-local space
+  group.add(tip);
+
+  return { group, tip };
 }
 
 function makeSquirtGun(): Group {
@@ -160,14 +166,19 @@ export class WeaponSystem extends createSystem({}) {
   }
 
   private syncLeft(weapon: "sword" | null) {
+    const globals = this.world.globals as Record<string, unknown>;
     if (weapon === "sword" && !this.leftWeapon) {
-      this.leftWeapon = makeSword();
-      this.player.gripSpaces.left.add(this.leftWeapon);
+      const { group, tip } = makeSword();
+      this.leftWeapon = group;
+      this.player.gripSpaces.left.add(group);
+      // Publish tip so PortalSystem can do contact + velocity checks.
+      globals.swordTip = tip;
     } else if (!weapon && this.leftWeapon) {
       this.player.gripSpaces.left.remove(this.leftWeapon);
       this.disposeSubtree(this.leftWeapon);
       this.leftWeapon = null;
       this.swingAnimStartAt = 0; // cancel any in-flight animation
+      delete globals.swordTip;
     }
   }
 

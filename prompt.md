@@ -288,3 +288,9 @@ the eagles need to be like 3x as high, and the bobbing motion is great, but need
 ```
 how do i make a swing sword animation on a keyboard press like the letter E, since i cant swing the sword otherwise. give teh sword a hitbox. make 🟫 wood, make ti the same as the blue walls (also the same pregame hidden behavior), and this can be whacked witht he sowrd, and 5 times hitting it and it disappears. when yo uhit it, it flashes red like the eagle.
 ```
+
+## 2026-04-14T23:45:00Z
+
+```
+if the sword makes contact with an enemy, they should be stunned for a split second and be pushed back a bit (only ghosts can be hit stun by the sword) the gun does not have this effect on enemies, its only swoard hitting ghost and robot. if the sword is swung and hits them then it does this, but not if the swoord is still. we need to do the swoard by contact, so this works by both when i press E and when the user swings by moving thier arm. we don't want a still sowrd to do anything, so check the speed at which its being swung, do a physics calculation so that if its moving at a certain speed when it makes contact, then it does damage.
+```

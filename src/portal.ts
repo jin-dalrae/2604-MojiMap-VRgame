@@ -19,7 +19,7 @@ import {
   setWorldPosition,
 } from "@iwsdk/core";
 import { type Signal } from "@preact/signals-core";
-import { FX } from "./game-fx.js";
+import { FX, pulse } from "./game-fx.js";
 import {
   GameState,
   GameActions,
@@ -39,6 +39,10 @@ import {
   SWORD_RADIUS,
   SWORD_DAMAGE,
   SWORD_COOLDOWN_MS,
+  SWORD_MIN_SPEED,
+  SWORD_HIT_COOLDOWN_MS,
+  SWORD_KNOCKBACK_SPEED,
+  SWORD_KNOCKBACK_MS,
   CHAIR_READY_RADIUS,
   WALL_CELL_HALF,
   BOARD_HALF_W,
@@ -204,6 +208,13 @@ type SpawnedItem = {
   // Optional companion mesh — chairs mount a glowing beacon above them
   // so players can find the spawn from anywhere. Disposed with the item.
   extra?: Mesh;
+  // Knockback — set by a sword hit on robots/ghosts. While `now` is
+  // before knockbackUntil, the enemy's normal AI is suppressed and its
+  // position is advanced by (knockbackVx, knockbackVz) decayed each
+  // frame. Skulls and birds are immune.
+  knockbackUntil: number;
+  knockbackVx: number;
+  knockbackVz: number;
 };
 
 export class PortalSystem extends createSystem({}) {
@@ -215,6 +226,8 @@ export class PortalSystem extends createSystem({}) {
   private tempFwd!: Vector3;
   private tempGrip!: Vector3;
   private tempChase!: Vector3;
+  private tempSwordTip!: Vector3;
+  private prevSwordTip: Vector3 | null = null;
   // Cooldown gates — keeps sword from deleting enemies in a single tick
   // by virtue of being inside their hit radius for several frames.
   private lastSwordHitAt = 0;
@@ -273,6 +286,7 @@ export class PortalSystem extends createSystem({}) {
     this.tempFwd = new Vector3();
     this.tempGrip = new Vector3();
     this.tempChase = new Vector3();
+    this.tempSwordTip = new Vector3();
 
     const globals = this.world.globals as Record<string, unknown>;
     this.roundRunning  = GameState.roundRunning(globals);
@@ -787,6 +801,7 @@ export class PortalSystem extends createSystem({}) {
         nextDamageableAt: 0,
         heading: 0, radius: 0, omega: 0, phase: 0,
         birdState: 'flying', hitFlashUntil: 0,
+        knockbackUntil: 0, knockbackVx: 0, knockbackVz: 0,
       });
       this.setWallState(this.spawnedEntities.get(key)!, this.roundRunning.peek());
       return;
@@ -864,6 +879,7 @@ export class PortalSystem extends createSystem({}) {
       birdState: 'flying',
       hitFlashUntil: 0,
       extra,
+      knockbackUntil: 0, knockbackVx: 0, knockbackVz: 0,
     });
   }
 
@@ -985,39 +1001,21 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
-  // Active sword swing — called by keyboard (E) and the left trigger.
-  // Hits every enemy or wood block within SWORD_RADIUS once, regardless
-  // of how many swings per second the player spams (cooldown still
-  // rate-limits the visual + damage).
+  // Swing is now animation-only. Damage comes from contact + velocity
+  // in tickSwordContact — which also picks up hits when the user
+  // physically swings their arm, not just key/trigger presses.
+  //
+  // We still rate-limit the animation itself so key spam can't cause
+  // a jittery re-trigger mid-swing.
   private swingSword() {
     if (this.isDead.peek()) return;
     if (this.equippedLeft.peek() !== 'sword') return;
     const now = performance.now();
     if (now < this.lastSwordHitAt + SWORD_COOLDOWN_MS) return;
     this.lastSwordHitAt = now;
-
-    // Drive the WeaponSystem animation + register the swing audibly.
+    // Kick the animation — WeaponSystem is subscribed to lastSwingAt.
     this.lastSwingAt.value = Date.now();
-
-    this.player.gripSpaces.left.getWorldPosition(this.tempGrip);
-    const swordR2 = SWORD_RADIUS * SWORD_RADIUS;
-    let landed = false;
-    for (const [key, item] of [...this.spawnedEntities]) {
-      const dx = this.tempGrip.x - item.object3D.position.x;
-      const dz = this.tempGrip.z - item.object3D.position.z;
-      const d2 = dx * dx + dz * dz;
-      if (d2 > swordR2) continue;
-      if (item.role === 'enemy') {
-        this.damageEnemy(key, SWORD_DAMAGE);
-        landed = true;
-      } else if (item.type === 'wood') {
-        this.damageWood(key, item);
-        landed = true;
-      }
-    }
-    // Generic swing whoosh even on a whiff — feels better than silence.
-    FX.swordHit(this.input.gamepads.left);
-    void landed; // reserved for a future miss-specific cue if we want one
+    FX.swordHit(this.input.gamepads.left); // whoosh
   }
 
   // Wood damage — 5 sword hits to break. Flashes red per hit (the wall
@@ -1086,6 +1084,7 @@ export class PortalSystem extends createSystem({}) {
       targets.push({ x: av.root.position.x, z: av.root.position.z });
     }
 
+    const nowMs = performance.now();
     for (const item of this.spawnedEntities.values()) {
       // Birds have their own AI track — handled separately since they
       // fly, fall, and land rather than chasing/wandering like enemies.
@@ -1094,8 +1093,21 @@ export class PortalSystem extends createSystem({}) {
         continue;
       }
       if (item.role !== 'enemy') continue;
-      const stats = enemyStats(item.type);
       const pos = item.object3D.position;
+
+      // Knockback override — while an enemy is stunned from a sword hit,
+      // it drifts with its residual knockback velocity and the normal
+      // AI branch is skipped entirely. Velocity decays exponentially.
+      if (nowMs < item.knockbackUntil) {
+        pos.x += item.knockbackVx * deltaSeconds;
+        pos.z += item.knockbackVz * deltaSeconds;
+        const decay = Math.pow(0.12, deltaSeconds); // ~88%/s decay
+        item.knockbackVx *= decay;
+        item.knockbackVz *= decay;
+        continue;
+      }
+
+      const stats = enemyStats(item.type);
 
       if (item.type === 'skull') {
         // Pure circular motion around origin; walls + edges ignored.
@@ -1203,6 +1215,75 @@ export class PortalSystem extends createSystem({}) {
     const flap  = Math.sin(time * BIRD_FLAP_FREQ + item.phase) * BIRD_FLAP_AMP;
     const drift = Math.sin(time * BIRD_DRIFT_FREQ + item.phase * 0.3) * BIRD_DRIFT_AMP;
     pos.y = BIRD_FLIGHT_HEIGHT + flap + drift;
+  }
+
+  // Sword contact + physics-ish hit detection. Runs every frame the
+  // sword is equipped — compute the tip's world velocity since last
+  // frame, and if it's moving fast enough (SWORD_MIN_SPEED) check for
+  // enemy/wood targets inside SWORD_RADIUS. Per-target cooldown so a
+  // single swing doesn't chain 10 hits on the same enemy.
+  //
+  // Robots and ghosts get knocked back + stunned on hit; skulls run on
+  // a parametric circle so knockback would just look broken.
+  private tickSwordContact(deltaSeconds: number) {
+    const globals = this.world.globals as Record<string, unknown>;
+    const tip = globals.swordTip as Object3D | undefined;
+    if (!tip || this.equippedLeft.peek() !== 'sword' || this.isDead.peek()) {
+      this.prevSwordTip = null;
+      return;
+    }
+
+    // Current tip world position.
+    tip.getWorldPosition(this.tempSwordTip);
+    if (!this.prevSwordTip) {
+      this.prevSwordTip = this.tempSwordTip.clone();
+      return;
+    }
+
+    // Velocity magnitude — require it to exceed SWORD_MIN_SPEED. Clamp
+    // delta to avoid huge spikes on tab-switch / first frame.
+    const safeDelta = Math.max(deltaSeconds, 0.001);
+    const vx = (this.tempSwordTip.x - this.prevSwordTip.x) / safeDelta;
+    const vy = (this.tempSwordTip.y - this.prevSwordTip.y) / safeDelta;
+    const vz = (this.tempSwordTip.z - this.prevSwordTip.z) / safeDelta;
+    const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
+
+    // Remember this frame's tip position for next frame's velocity calc,
+    // regardless of whether we land a hit.
+    this.prevSwordTip.copy(this.tempSwordTip);
+
+    if (speed < SWORD_MIN_SPEED) return;
+
+    const swordR2 = SWORD_RADIUS * SWORD_RADIUS;
+    const now = performance.now();
+    const leftPad = this.input.gamepads.left;
+
+    for (const [key, item] of [...this.spawnedEntities]) {
+      if (now < item.nextDamageableAt) continue;
+      const pos = item.object3D.position;
+      const dx = pos.x - this.tempSwordTip.x;
+      const dz = pos.z - this.tempSwordTip.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > swordR2) continue;
+
+      if (item.role === 'enemy') {
+        item.nextDamageableAt = now + SWORD_HIT_COOLDOWN_MS;
+        const killed = this.damageEnemy(key, SWORD_DAMAGE);
+        if (killed) continue;
+        // Knockback + stun for ground-motion variants only. Skull's
+        // parametric orbit would immediately overwrite pushback.
+        if (item.type === 'robot' || item.type === 'ghost') {
+          const len = Math.hypot(dx, dz) || 1;
+          item.knockbackVx = (dx / len) * SWORD_KNOCKBACK_SPEED;
+          item.knockbackVz = (dz / len) * SWORD_KNOCKBACK_SPEED;
+          item.knockbackUntil = now + SWORD_KNOCKBACK_MS;
+          pulse(leftPad, 0.9, 70); // extra thump on a stun hit
+        }
+      } else if (item.type === 'wood') {
+        item.nextDamageableAt = now + SWORD_HIT_COOLDOWN_MS;
+        this.damageWood(key, item);
+      }
+    }
   }
 
   // Walls (incl. wood) may be flashing red from a sword hit. Each frame
@@ -1368,6 +1449,9 @@ export class PortalSystem extends createSystem({}) {
       this.tickEnemyAI(delta, time);
       this.handleCollisions(delta);
     }
+    // Sword contact checks run whenever the sword is equipped — the
+    // tip's velocity is what decides a hit, not a discrete swing event.
+    if (roundRunning) this.tickSwordContact(delta);
     // Wall red-flash (on sword hit) runs any time so the tint resets
     // cleanly regardless of round state.
     this.tickWallFlash();
