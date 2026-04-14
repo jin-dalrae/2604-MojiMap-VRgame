@@ -117,6 +117,88 @@
       }
       .btn-primary.running:hover { background: #dc2626; }
 
+      /* ── Round-end banner ── */
+      .banner-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(4px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        animation: banner-fade-in 0.25s ease-out;
+      }
+      .banner-backdrop.show { display: flex; }
+      @keyframes banner-fade-in {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      .banner-card {
+        background: linear-gradient(180deg, #18181b 0%, #0a0a0d 100%);
+        border: 2px solid var(--banner-accent, #71717a);
+        border-radius: 16px;
+        padding: 36px 56px;
+        min-width: 380px;
+        text-align: center;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.8), 0 0 40px var(--banner-accent, transparent);
+        animation: banner-pop 0.35s cubic-bezier(0.2, 0.9, 0.25, 1.2);
+      }
+      @keyframes banner-pop {
+        from { transform: scale(0.6); opacity: 0; }
+        to   { transform: scale(1);   opacity: 1; }
+      }
+      .banner-reason {
+        font-size: 44px;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        color: var(--banner-accent, #f4f4f5);
+        margin-bottom: 18px;
+        text-transform: uppercase;
+      }
+      .banner-winner-label {
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 6px;
+      }
+      .banner-winner {
+        font-size: 28px;
+        color: var(--text);
+        margin-bottom: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .banner-winner-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--wcolor, #666);
+        box-shadow: 0 0 12px var(--wcolor, transparent);
+      }
+      .banner-score {
+        font-size: 38px;
+        color: #fbbf24;
+        font-weight: 700;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        margin-top: 8px;
+      }
+      .banner-no-winner {
+        font-size: 16px;
+        color: var(--muted);
+        font-style: italic;
+      }
+      .banner-dismiss-hint {
+        font-size: 10px;
+        color: var(--muted);
+        margin-top: 24px;
+        letter-spacing: 0.5px;
+      }
+
       /* ── Leaderboard (VR player scores) ── */
       .leaderboard {
         position: fixed;
@@ -535,6 +617,16 @@
       </div>
     </header>
 
+    <!-- Round-end banner — modal with winner + result -->
+    <div class="banner-backdrop" id="banner" role="dialog" aria-modal="true">
+      <div class="banner-card">
+        <div class="banner-reason" id="banner-reason">ROUND OVER</div>
+        <div class="banner-winner-label" id="banner-winner-label">Winner</div>
+        <div id="banner-winner-host"></div>
+        <div class="banner-dismiss-hint">Click anywhere to dismiss</div>
+      </div>
+    </div>
+
     <!-- Live leaderboard (VR players who've sent at least one position) -->
     <div class="leaderboard" id="leaderboard">
       <div class="lb-title"><span>Players</span><span id="lb-count">0</span></div>
@@ -750,6 +842,7 @@
               setRoundRunning(true);
               startTick();
               renderTimer();
+              hideBanner();
               // Wipe the visible leaderboard so stale numbers don't hang
               // around before the first position packet arrives.
               for (const s of playerStats.values()) {
@@ -764,6 +857,7 @@
               setRoundRunning(false);
               stopTick();
               renderTimer();
+              showBanner(msg.reason || 'timeout');
               break;
           }
         };
@@ -834,6 +928,75 @@
         }
         players.delete(userId);
       }
+
+      // ── Round-end banner ───────────────────────────────────
+      const BANNER_META = {
+        completed:    { title: 'VICTORY',       color: '#10b981' },
+        died:         { title: 'CONTESTANT DOWN', color: '#ef4444' },
+        timeout:      { title: "TIME'S UP",     color: '#f59e0b' },
+        'host-stopped': { title: 'ROUND ENDED', color: '#a1a1aa' },
+      };
+      const BANNER_DURATION_MS = 5500;
+      let bannerHideTimer = null;
+
+      function showBanner(reason) {
+        const meta = BANNER_META[reason] ?? BANNER_META['host-stopped'];
+        const banner = document.getElementById('banner');
+        banner.style.setProperty('--banner-accent', meta.color);
+        document.getElementById('banner-reason').textContent = meta.title;
+
+        // Snapshot the leaderboard at this moment — damageEnemy +
+        // pickups have all settled before ROUND_END fires.
+        const ranked = [...playerStats.entries()].sort((a, b) => {
+          const ga = a[1].goalsCollected, gb = b[1].goalsCollected;
+          if (ga !== gb) return gb - ga;
+          if (a[1].score !== b[1].score) return b[1].score - a[1].score;
+          return b[1].health - a[1].health;
+        });
+
+        const host = document.getElementById('banner-winner-host');
+        const label = document.getElementById('banner-winner-label');
+        host.innerHTML = '';
+        if (ranked.length === 0) {
+          label.textContent = '';
+          const p = document.createElement('div');
+          p.className = 'banner-no-winner';
+          p.textContent = 'No contestants this round';
+          host.appendChild(p);
+        } else {
+          // Host shows the top player + their score. Draws/ties just
+          // show whoever sorted first — good enough for a prototype.
+          const [userId, stats] = ranked[0];
+          label.textContent = reason === 'died' ? 'Final Standing' : 'Winner';
+          const color = colorForUser(userId);
+
+          const winnerRow = document.createElement('div');
+          winnerRow.className = 'banner-winner';
+          winnerRow.style.setProperty('--wcolor', color.solid);
+          winnerRow.innerHTML =
+            `<span class="banner-winner-dot"></span><span>${userId.slice(0, 8)}</span>`;
+          host.appendChild(winnerRow);
+
+          const score = document.createElement('div');
+          score.className = 'banner-score';
+          const progress = stats.goalsTotal > 0
+            ? `${stats.goalsCollected} / ${stats.goalsTotal}`
+            : String(stats.score);
+          score.textContent = `⭐ ${progress}`;
+          host.appendChild(score);
+        }
+
+        banner.classList.add('show');
+        if (bannerHideTimer) clearTimeout(bannerHideTimer);
+        bannerHideTimer = setTimeout(hideBanner, BANNER_DURATION_MS);
+      }
+
+      function hideBanner() {
+        document.getElementById('banner').classList.remove('show');
+        if (bannerHideTimer) { clearTimeout(bannerHideTimer); bannerHideTimer = null; }
+      }
+
+      document.getElementById('banner').addEventListener('click', hideBanner);
 
       // ── Leaderboard state ──────────────────────────────────
       // Keyed by userId — only VR clients that send PLAYER_POSITION
