@@ -372,3 +372,15 @@ the first couple times i use my voice to say poopoodoodoo it works really well, 
 ```
 we can use a really bad model from openai to do the real time voice recognition, what we have so far doesn't work well enough. path a, put this in the vercel env area [REDACTED OPENAI KEY] and put it somewhere local with a git ignore. sorry, it can also be put in the railway, lets do b if it isn't too hard.
 ```
+
+## 2026-04-15T01:55:00Z
+
+```
+saying poo poo doo doo does not work [GA realtime API parameter shape error]
+```
+
+## 2026-04-15T01:58:00Z
+
+```
+OK, ITS BEING TOO SELECTIVE maybe use the api to turn on a thing that makes it less discrimnating
+```

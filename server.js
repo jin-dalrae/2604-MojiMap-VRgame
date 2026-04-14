@@ -115,18 +115,22 @@ server.on('request', async (req, res) => {
       return;
     }
     try {
-      // Transcription-only session: cheapest realtime path. We don't
-      // want speech-to-speech, just keyword spotting.
+      // Transcription-only session — cheapest realtime path. The GA
+      // Realtime API nests transcription/VAD config under audio.input,
+      // not at the top level (the older beta shape was different).
       const sessionConfig = {
         session: {
           type: 'transcription',
-          input_audio_transcription: { model: 'gpt-4o-mini-transcribe' },
-          // VAD trims silence so we get faster, more accurate transcripts.
-          turn_detection: {
-            type: 'server_vad',
-            threshold: 0.5,
-            prefix_padding_ms: 200,
-            silence_duration_ms: 250,
+          audio: {
+            input: {
+              transcription: { model: 'gpt-4o-mini-transcribe' },
+              turn_detection: {
+                type: 'server_vad',
+                threshold: 0.5,
+                prefix_padding_ms: 200,
+                silence_duration_ms: 250,
+              },
+            },
           },
         },
       };

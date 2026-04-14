@@ -19,12 +19,15 @@
 import { createSystem } from "@iwsdk/core";
 import { GameActions } from "./game-state.js";
 
+// Whisper transcribes "poo poo doo doo" in dozens of forms — Foo-foo,
+// Poo-poo, Boo-boo, ププルル, etc — so checking for the literal phrase
+// is brittle. Instead: count "oo" sounds. A normal sentence has zero
+// or one ("moon", "soon"); the bomb phrase chant produces 4+. Three is
+// the threshold so partial transcripts ("poo poo doo …") still fire.
 function matchesBombPhrase(text: string): boolean {
-  const t = text.toLowerCase().replace(/[^a-z ]/g, "");
-  return (
-    t.includes("poo poo") &&
-    (t.includes("doo doo") || t.includes("do do") || t.includes("do doo") || t.includes("doo do"))
-  );
+  const clean = text.toLowerCase().replace(/[^a-z]+/g, " ").trim();
+  const oo = (clean.match(/o{2,}/g) ?? []).length;
+  return oo >= 3;
 }
 
 function tokenUrl(): string {
