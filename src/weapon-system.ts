@@ -16,6 +16,7 @@ import {
   InputComponent,
 } from "@iwsdk/core";
 import { GameState, GameActions, GUN_COOLDOWN_MS } from "./game-state.js";
+import { FX } from "./game-fx.js";
 
 // Factories kept tiny on purpose — these are placeholder shapes that
 // read clearly in VR without asset loading. Swap for GLTFs later.
@@ -114,6 +115,7 @@ export class WeaponSystem extends createSystem({}) {
 
     const fire = GameActions.fireProjectile(this.world.globals as Record<string, unknown>);
     fire?.();
+    FX.gunFire(gamepad);
   }
 
   private syncLeft(weapon: "sword" | null) {

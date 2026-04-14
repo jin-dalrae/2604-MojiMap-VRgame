@@ -13,6 +13,7 @@ import {
   Object3D,
 } from "@iwsdk/core";
 import { type Signal } from "@preact/signals-core";
+import { FX } from "./game-fx.js";
 import {
   GameState,
   GameActions,
@@ -220,10 +221,10 @@ export class PortalSystem extends createSystem({}) {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'GRID_CLEAR', key }));
       }
+      // Either hand works for the kill thump; prefer whichever has a pad.
+      FX.enemyKill(this.input.gamepads.right ?? this.input.gamepads.left);
       return true;
     }
-    // Non-lethal hit — flash opacity briefly via the flicker pipeline.
-    // (animateItems already handles this; no extra state needed.)
     return false;
   }
 
@@ -284,6 +285,13 @@ export class PortalSystem extends createSystem({}) {
         this.equippedRight.value = null;
         this.roundEndsAt.value = msg.endsAt;
         this.roundRunning.value = true;
+        // Snapshot goal count so checkWin() knows if this was a
+        // goal-based round (ignore survival rounds with zero goals).
+        this.goalsAtRoundStart = 0;
+        for (const item of this.spawnedEntities.values()) {
+          if (item.role === 'goal') this.goalsAtRoundStart++;
+        }
+        FX.roundStart();
         break;
 
       case 'ROUND_END':
@@ -294,6 +302,10 @@ export class PortalSystem extends createSystem({}) {
         // they despawn"). Health stays so the player sees their final state.
         this.equippedLeft.value = null;
         this.equippedRight.value = null;
+        // Reason-driven cue — completion feels different from timeout/death.
+        if      (msg.reason === 'completed') FX.roundWin();
+        else if (msg.reason === 'died')      FX.roundLose();
+        else                                 FX.roundTimeout();
         break;
 
       case 'GRID_UPDATE':
@@ -523,7 +535,8 @@ export class PortalSystem extends createSystem({}) {
           const gripD2 = this.tempGrip.distanceToSquared(item.sprite.position);
           if (gripD2 < swordR2) {
             this.lastSwordHitAt = now;
-            this.damageEnemy(key, SWORD_DAMAGE);
+            const killed = this.damageEnemy(key, SWORD_DAMAGE);
+            if (!killed) FX.swordHit(this.input.gamepads.left);
             continue; // item may be gone; don't touch it again this tick
           }
         }
@@ -535,6 +548,11 @@ export class PortalSystem extends createSystem({}) {
       const next = Math.max(0, current + totalHealthDelta);
       if (next !== current) {
         this.playerHealth.value = next;
+        // Cue once per chunk of damage taken (not per frame) — floor(hp/5)
+        // changing means at least 5 HP drained since the last cue.
+        if (Math.floor(next / 5) < Math.floor(current / 5)) {
+          FX.playerHurt(this.input.gamepads.right ?? this.input.gamepads.left);
+        }
         if (next <= 0) this.playerDied();
       }
     }
@@ -570,22 +588,44 @@ export class PortalSystem extends createSystem({}) {
   }
 
   private applyPickup(role: ItemRole) {
+    const leftPad  = this.input.gamepads.left;
+    const rightPad = this.input.gamepads.right;
     switch (role) {
       case 'weapon-sword':
         this.equippedLeft.value = 'sword';
+        FX.pickupWeapon(leftPad);
         break;
       case 'weapon-gun':
         this.equippedRight.value = 'gun';
+        FX.pickupWeapon(rightPad);
         break;
       case 'goal':
         this.score.value = this.score.peek() + GOAL_POINTS;
+        FX.pickupGoal(rightPad ?? leftPad);
+        this.checkWin();
         break;
       case 'powerup':
         this.playerHealth.value = Math.min(
           MAX_HEALTH,
           this.playerHealth.peek() + POWERUP_HEAL,
         );
+        FX.pickupPowerup(rightPad ?? leftPad);
         break;
+    }
+  }
+
+  // End the round early when no goals remain. Only triggers if at least
+  // one goal existed at some point during this round — a round with zero
+  // goals is a survival/exploration round and should just run the clock.
+  private goalsAtRoundStart = 0;
+  private checkWin() {
+    if (this.goalsAtRoundStart === 0) return;
+    let goalsLeft = 0;
+    for (const item of this.spawnedEntities.values()) {
+      if (item.role === 'goal') goalsLeft++;
+    }
+    if (goalsLeft === 0 && this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'ROUND_END', reason: 'completed' }));
     }
   }
 
