@@ -882,10 +882,14 @@ export class PortalSystem extends createSystem({}) {
   private teleportToSpawn() {
     const spawns: { x: number; z: number }[] = [];
     for (const item of this.spawnedEntities.values()) {
-      if (item.role === 'spawn') {
+      // Accept either the new role or a raw `type: 'chair'` — the
+      // latter handles chairs placed before the ROLE_BY_ICON mapping
+      // existed on the portal (they'd be stored with role='decor').
+      if (item.role === 'spawn' || item.type === 'chair') {
         spawns.push({ x: item.origin[0], z: item.origin[2] });
       }
     }
+    console.log(`[Round] Teleporting to spawn. ${spawns.length} chair(s) found.`);
     if (spawns.length === 0) {
       this.teleportPlayerTo(0, 0);
       return;
