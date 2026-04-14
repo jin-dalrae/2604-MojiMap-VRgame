@@ -432,3 +432,9 @@ but the braodcast view shouldn't hold any ai logic, since if you were to run the
 ```
 is it not eaiser to just take the game player view, and have it show all fo this, but just make it liek custom logic, so a player dosen spawn, it has a different caera, and it has this hud?
 ```
+
+## 2026-04-15T04:25:00Z
+
+```
+you didn't do what i said. i mean use a copy of this: like instead, like completely rip out everything in broadcast view, and make it just another player view, but customized, so it doens't add a player, it has a different camera, and it has the hud you created.
+```

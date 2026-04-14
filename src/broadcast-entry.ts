@@ -1,74 +1,78 @@
 // Broadcast / spectator view.
 //
-// Re-uses the exact same World + PortalSystem pipeline as the VR scene,
-// just with no XR session and `isSpectator` set on globals — that flag
-// makes PortalSystem skip every gameplay tick and act as a pure
-// renderer of authoritative state coming over the WebSocket.
+// This is intentionally a *copy* of index.ts (the VR scene). Same World
+// setup, same systems, same floor + grid. The only differences:
 //
-// On top of PortalSystem, this entry adds:
-//   - Orbit camera (mouse drag + scroll wheel)
-//   - DOM HUD overlay (timer + leaderboard) read from globals signals
-//   - Floor + grid mesh + lights so the spectator isn't staring into
-//     a black void
+//   1. No XR session offered — there's no headset on the broadcast page.
+//   2. globals.isSpectator = true BEFORE registering systems, so
+//      PortalSystem and friends bail out of every gameplay tick — they
+//      become passive renderers of state coming over the WebSocket.
+//   3. HUDSystem and VoiceSystem are skipped — the head-locked HUD has
+//      no head to attach to here, and we don't want the broadcast to
+//      open a microphone.
+//   4. An orbit camera + DOM HUD overlay are layered on top.
 //
-// Result: walls scale, bird altitudes, player jumps, weapons, and any
-// future gameplay visual all appear on the broadcast for free, because
+// Net effect: walls, birds, weapons, players, jumps, the chair beacon
+// — anything the VR scene draws — appear here automatically because
 // the same code paths render them.
 
 import {
   Mesh,
-  MeshBasicMaterial,
   PlaneGeometry,
-  AmbientLight,
-  DirectionalLight,
   World,
-  Vector3,
   LineSegments,
   LineBasicMaterial,
   BufferGeometry,
   Float32BufferAttribute,
-  EnvironmentType,
-  LocomotionEnvironment,
+  MeshStandardMaterial,
+  AmbientLight,
+  DirectionalLight,
+  Vector3,
 } from "@iwsdk/core";
+
 import { PortalSystem } from "./portal.js";
+import { SyncSystem } from "./sync.js";
+import { WeaponSystem } from "./weapon-system.js";
+import { ProjectileSystem } from "./projectile-system.js";
+import { BombSystem } from "./bomb-system.js";
 import { GameState, getPlayerStats, type PlayerStat } from "./game-state.js";
 
-async function init() {
-  const container = document.getElementById("scene-container") as HTMLDivElement;
-
-  const world = await World.create(container, {
-    xr: { offer: "none" },
-    features: { locomotion: false, grabbing: false, physics: false },
-  });
-
-  // Mark spectator BEFORE registering systems — PortalSystem.init
-  // peeks the flag to wire callbacks (and update() bails on it).
+World.create(document.getElementById("scene-container") as HTMLDivElement, {
+  // No XR session — broadcast renders flat. `offer: 'none'` ensures the
+  // "Enter XR" button never appears.
+  xr: { offer: "none" },
+  features: {
+    locomotion: false,
+    grabbing: false,
+    physics: false,
+  },
+}).then((world) => {
+  const { scene, camera } = world;
   const globals = world.globals as Record<string, unknown>;
+
+  // Mark this client as a spectator BEFORE registering systems —
+  // PortalSystem.update() bails on this flag and the ITEM_STATES handler
+  // only runs in spectator mode.
   GameState.isSpectator(globals).value = true;
 
-  world.registerSystem(PortalSystem);
+  world
+    .registerSystem(PortalSystem)
+    .registerSystem(SyncSystem)
+    .registerSystem(WeaponSystem)
+    .registerSystem(ProjectileSystem)
+    .registerSystem(BombSystem);
+  // VoiceSystem skipped: no mic for spectator.
+  // HUDSystem  skipped: head-locked HUD has nothing to attach to.
 
-  const { scene, camera } = world;
-
-  // Lights so the wall MeshStandardMaterials aren't black.
+  // Lights so MeshStandardMaterial walls aren't pitch black on flat view.
   scene.add(new AmbientLight(0xffffff, 0.7));
   const sun = new DirectionalLight(0xffffff, 0.85);
   sun.position.set(8, 12, 6);
   scene.add(sun);
 
-  // Visible floor + grid, matched to the VR scene's 20×10 stage.
-  const floorGeom = new PlaneGeometry(20, 10);
-  floorGeom.rotateX(-Math.PI / 2);
-  const floorMesh = new Mesh(
-    floorGeom,
-    new MeshBasicMaterial({ color: 0x3f3f52 }),
-  );
-  // A LocomotionEnvironment isn't strictly needed (no locomotion in
-  // spectator), but matching the VR scene keeps the visual identical.
-  world.createTransformEntity(floorMesh)
-    .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
-
-  function makeRectGrid(cols: number, rows: number, cell = 1): LineSegments {
+  // ── Same grid + floor as index.ts ──────────────────────────
+  {
+    const cols = 20, rows = 10, cell = 1;
     const halfW = (cols * cell) / 2;
     const halfD = (rows * cell) / 2;
     const verts: number[] = [];
@@ -82,18 +86,27 @@ async function init() {
     }
     const geo = new BufferGeometry();
     geo.setAttribute("position", new Float32BufferAttribute(verts, 3));
-    return new LineSegments(geo, new LineBasicMaterial({ color: 0x6366f1, transparent: true, opacity: 0.8 }));
+    const mat = new LineBasicMaterial({
+      color: 0x6366f1, transparent: true, opacity: 0.8,
+    });
+    const gridLines = new LineSegments(geo, mat);
+    gridLines.position.y = 0.01;
+    world.createTransformEntity(gridLines);
   }
-  const gridLines = makeRectGrid(20, 10, 1);
-  gridLines.position.y = 0.01;
-  world.createTransformEntity(gridLines);
 
-  // ── Spectator camera (orbit) ───────────────────────────────
+  const floorGeom = new PlaneGeometry(20, 10);
+  floorGeom.rotateX(-Math.PI / 2);
+  const floorMat = new MeshStandardMaterial({
+    color: 0x09090b, transparent: true, opacity: 0.35, roughness: 1.0,
+  });
+  const floorMesh = new Mesh(floorGeom, floorMat);
+  world.createTransformEntity(floorMesh);
+
+  // ── Spectator orbit camera (overrides default after a frame) ──
   let alpha = Math.PI / 2;
   let beta = Math.PI / 3.5;
   let radius = 20;
   const target = new Vector3(0, 0.6, 0);
-
   function placeCamera() {
     beta = Math.max(0.1, Math.min(Math.PI / 2 - 0.05, beta));
     camera.position.x = target.x + radius * Math.cos(alpha) * Math.cos(beta);
@@ -103,8 +116,8 @@ async function init() {
   }
   placeCamera();
 
-  let dragging = false;
-  let lastX = 0, lastY = 0;
+  let dragging = false; let lastX = 0, lastY = 0;
+  const container = document.getElementById("scene-container") as HTMLDivElement;
   container.addEventListener("mousedown", (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
   window.addEventListener("mousemove", (e) => {
     if (!dragging) return;
@@ -127,7 +140,6 @@ async function init() {
     for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) | 0;
     return USER_COLORS[Math.abs(h) % USER_COLORS.length];
   }
-
   function renderHUD() {
     const running = GameState.roundRunning(globals).peek();
     const endsAt  = GameState.roundEndsAt(globals).peek();
@@ -141,8 +153,7 @@ async function init() {
       timerHtml = `<span style="color:${color}">${mm}:${ss}</span>`;
     }
 
-    const stats = getPlayerStats(globals);
-    const ranked: Array<[string, PlayerStat]> = [...stats.entries()];
+    const ranked: Array<[string, PlayerStat]> = [...getPlayerStats(globals).entries()];
     ranked.sort((a, b) => {
       if (a[1].goalsCollected !== b[1].goalsCollected) return b[1].goalsCollected - a[1].goalsCollected;
       return b[1].score - a[1].score;
@@ -176,14 +187,8 @@ async function init() {
       `<div style="margin-top:10px;text-align:center;font-family:ui-monospace,monospace;font-size:32px;font-weight:700">${timerHtml}</div>` +
       `<div style="margin-top:10px;border-top:1px solid #3f3f46;padding-top:8px;min-width:200px">${rows}</div>`;
   }
-
-  function hudLoop() {
-    renderHUD();
-    setTimeout(hudLoop, 200);
-  }
+  function hudLoop() { renderHUD(); setTimeout(hudLoop, 200); }
   hudLoop();
 
-  console.log("Broadcast Mode Initialized (spectator)");
-}
-
-init();
+  console.log("Broadcast initialized — spectator");
+});
