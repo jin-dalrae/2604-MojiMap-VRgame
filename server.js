@@ -28,11 +28,27 @@ const gridState = new Map(); // "r,c" -> { type, icon, label, role }
 const users = new Map();     // userId -> { position: {x, z, heading}, spaceId }
 
 // Round state. endsAt === 0 means no round in progress.
-// Duration is stored for reference (e.g. portals joining mid-round).
+// `pending` = portal has requested a round, waiting for a VR player to
+// confirm readiness at the chair. Actual timer doesn't start until then.
 // `snapshot` is a deep copy of gridState at ROUND_START — items the VR
 // clients clear during the round are restored at ROUND_END so the
 // designer's layout is authoritative across rounds.
-const round = { endsAt: 0, duration: 0, timeout: null, snapshot: null };
+const round = {
+  endsAt: 0,
+  duration: 0,
+  timeout: null,
+  snapshot: null,
+  pending: false,
+  pendingDuration: 0,
+};
+
+function cancelPending() {
+  if (!round.pending) return;
+  round.pending = false;
+  round.pendingDuration = 0;
+  broadcast({ type: 'ROUND_CANCEL' });
+  console.log('[⏱] Round request cancelled');
+}
 
 function endRound(reason) {
   if (!round.endsAt) return;
@@ -106,7 +122,10 @@ wss.on('connection', (ws) => {
     userId,
     grid: Object.fromEntries(gridState),
     users: Object.fromEntries(users),
-    round: round.endsAt ? { endsAt: round.endsAt, duration: round.duration } : null,
+    round: round.endsAt
+      ? { endsAt: round.endsAt, duration: round.duration }
+      : null,
+    pendingRound: round.pending ? { duration: round.pendingDuration } : null,
   }));
 
   ws.on('message', (raw) => {
@@ -130,7 +149,44 @@ wss.on('connection', (ws) => {
         break;
 
       case 'ROUND_START':
+        // Legacy — straight-to-start path (kept for any client that
+        // hasn't migrated to the pending flow).
         startRound(msg.duration);
+        break;
+
+      case 'ROUND_REQUEST': {
+        // Portal asked to start; enter pending state. VR players must
+        // walk to the chair + press SELECT to confirm → actual start.
+        if (round.endsAt || round.pending) break;
+        const d = Math.max(5, Math.min(600, Math.round(msg.duration || 30)));
+        round.pending = true;
+        round.pendingDuration = d;
+        console.log(`[⏱] Round requested (${d}s) — waiting for VR ready`);
+        broadcast({ type: 'ROUND_PENDING', duration: d });
+        // If there are no VR players at all, auto-start so the portal
+        // operator can still run solo tests.
+        let vrPlayers = 0;
+        for (const u of users.values()) vrPlayers++;
+        if (vrPlayers === 0) {
+          console.log('[⏱] No VR players connected — auto-starting');
+          round.pending = false;
+          startRound(d);
+        }
+        break;
+      }
+
+      case 'ROUND_READY':
+        // First VR player to confirm kicks off the actual round.
+        if (round.pending) {
+          const d = round.pendingDuration;
+          round.pending = false;
+          round.pendingDuration = 0;
+          startRound(d);
+        }
+        break;
+
+      case 'ROUND_CANCEL':
+        cancelPending();
         break;
 
       case 'ROUND_END':

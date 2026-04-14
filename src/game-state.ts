@@ -13,7 +13,6 @@ export type ItemRole =
   | "powerup"
   | "obstacle-damage"
   | "enemy"
-  | "warp"
   | "spawn"
   | "decor";
 
@@ -113,9 +112,9 @@ export const PROJECTILE_RADIUS = 0.25;  // collision radius with enemies
 export const PROJECTILE_DAMAGE = 1;
 export const GUN_COOLDOWN_MS = 220;     // rate-limit trigger spam
 
-// Warp ("🌀") teleport tuning
-export const WARP_RADIUS = 0.6;         // meters — player head triggers warp
-export const WARP_COOLDOWN_MS = 1500;   // global debounce after teleport
+// Ready-check flow — player must stand near the chair and press SELECT
+// after the portal requests a round, before the round actually starts.
+export const CHAIR_READY_RADIUS = 0.9; // meters — close enough to the chair
 
 // Cross-system callbacks registered on `world.globals`. Systems that
 // own data expose these; consumers call without knowing the owner.
@@ -165,6 +164,10 @@ export const GameState = {
   // Local death flag — true when the player's HP hit 0 during a round.
   // Round continues; dead players are spectators.
   isDead:         (g: Globals) => getOrInit<boolean>(g, "isDead", false),
+  // Pending round — portal has requested start, waiting for a VR player
+  // to walk to the chair and press SELECT. HUD renders a ready-check
+  // banner while this is true.
+  roundPending:   (g: Globals) => getOrInit<boolean>(g, "roundPending", false),
 };
 
 // Enemies use this as a cell-size for wall avoidance: a wall occupies

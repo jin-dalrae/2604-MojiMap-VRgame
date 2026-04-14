@@ -43,6 +43,14 @@ const DEAD_PANEL_W  = 1.1;
 const DEAD_PANEL_H  = 0.28;
 const DEAD_OFFSET: [number, number, number] = [0, 0.12, -1.4];
 
+// Ready-check banner — shown while the portal has requested a round
+// and this VR client hasn't confirmed at the chair yet.
+const READY_CANVAS_W = 1024;
+const READY_CANVAS_H = 256;
+const READY_PANEL_W  = 1.0;
+const READY_PANEL_H  = 0.25;
+const READY_OFFSET: [number, number, number] = [0, 0.1, -1.3];
+
 export class HUDSystem extends createSystem({}) {
   private canvas!: HTMLCanvasElement;
   private ctx!: CanvasRenderingContext2D;
@@ -58,6 +66,11 @@ export class HUDSystem extends createSystem({}) {
   private deadCtx!: CanvasRenderingContext2D;
   private deadTexture!: CanvasTexture;
   private deadMesh!: Mesh;
+
+  private readyCanvas!: HTMLCanvasElement;
+  private readyCtx!: CanvasRenderingContext2D;
+  private readyTexture!: CanvasTexture;
+  private readyMesh!: Mesh;
 
   init() {
     // ── Main HUD panel ───────────────────────────────────────────
@@ -82,6 +95,7 @@ export class HUDSystem extends createSystem({}) {
     this.redraw();
     this.initResultPanel();
     this.initDeadPanel();
+    this.initReadyPanel();
   }
 
   private initResultPanel() {
@@ -149,6 +163,64 @@ export class HUDSystem extends createSystem({}) {
         this.deadMesh.visible = d;
       }),
     );
+  }
+
+  private initReadyPanel() {
+    this.readyCanvas = document.createElement("canvas");
+    this.readyCanvas.width = READY_CANVAS_W;
+    this.readyCanvas.height = READY_CANVAS_H;
+    this.readyCtx = this.readyCanvas.getContext("2d")!;
+    this.readyTexture = new CanvasTexture(this.readyCanvas);
+
+    const mat = new MeshBasicMaterial({
+      map: this.readyTexture,
+      transparent: true,
+      depthTest: false,
+    });
+    this.readyMesh = new Mesh(
+      new PlaneGeometry(READY_PANEL_W, READY_PANEL_H),
+      mat,
+    );
+    this.readyMesh.renderOrder = 1002;
+    this.readyMesh.visible = false;
+    this.readyMesh.position.set(...READY_OFFSET);
+    this.player.head.add(this.readyMesh);
+
+    this.drawReady();
+
+    const globals = this.world.globals as Record<string, unknown>;
+    const pending = GameState.roundPending(globals);
+    this.cleanupFuncs.push(
+      pending.subscribe((p) => {
+        this.readyMesh.visible = p;
+      }),
+    );
+  }
+
+  private drawReady() {
+    const ctx = this.readyCtx;
+    const W = READY_CANVAS_W, H = READY_CANVAS_H;
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.fillStyle = "rgba(12,12,16,0.88)";
+    roundedRect(ctx, 0, 0, W, H, 32);
+    ctx.fill();
+    ctx.strokeStyle = "#fbbf24";
+    ctx.lineWidth = 6;
+    roundedRect(ctx, 4, 4, W - 8, H - 8, 28);
+    ctx.stroke();
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fbbf24";
+    ctx.font = 'bold 72px "Apple Color Emoji", system-ui, sans-serif';
+    ctx.fillText("🪑 STAND HERE", W / 2, 96);
+
+    ctx.fillStyle = "#f4f4f5";
+    ctx.font = 'bold 44px system-ui, sans-serif';
+    ctx.fillText("Press SELECT to start round", W / 2, 180);
+
+    this.readyTexture.needsUpdate = true;
   }
 
   update(_delta: number, time: number) {
