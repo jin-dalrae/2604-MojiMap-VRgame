@@ -355,6 +355,12 @@ async function init() {
   // ── Round state ────────────────────────────────────────────
   let roundRunning = false;
   let roundEndsAt = 0;
+  // When a VR client recently sent authoritative item positions, skip
+  // local AI entirely — the broadcast becomes a passive renderer of
+  // the VR client's authoritative state. Falls back to local AI if no
+  // states arrive for AUTH_TIMEOUT ms (e.g. nobody in VR).
+  let lastAuthAt = 0;
+  const AUTH_TIMEOUT_MS = 1500;
   function setRoundRunning(v: boolean) {
     if (roundRunning === v) return;
     roundRunning = v;
@@ -362,8 +368,11 @@ async function init() {
   }
 
   // ── AI tick (mirrors portal.ts behavior) ───────────────────
+  // Skipped while we have authoritative state from a VR client — the
+  // VR side's AI is the ground truth; broadcast just renders.
   const tempVec = new Vector3();
   function tickEnemyAI(deltaSeconds: number, time: number) {
+    if (performance.now() - lastAuthAt < AUTH_TIMEOUT_MS) return;
     // Live targets — mirror VR's logic. Players who are dead are filtered.
     const targets: { x: number; z: number }[] = [];
     for (const [uid, marker] of players) {
@@ -532,6 +541,22 @@ async function init() {
           break;
         case 'GRID_CLEAR': despawnItem(msg.key); break;
         case 'GRID_CLEAR_ALL': for (const key of [...spawnedItems.keys()]) despawnItem(key); break;
+        case 'ITEM_STATES': {
+          // Authoritative live positions from a VR client. Each entry:
+          //   { key, x, y, z, birdState? }
+          type StateEntry = { key: string; x: number; y: number; z: number; birdState?: string };
+          for (const i of msg.items as StateEntry[]) {
+            const it = spawnedItems.get(i.key);
+            if (!it) continue;
+            it.object3D.position.set(i.x, i.y, i.z);
+            if (i.birdState && it.role === 'bird' && it.kind === 'sprite') {
+              const mat = (it.object3D as Sprite).material as SpriteMaterial;
+              mat.rotation = i.birdState === 'grounded' ? Math.PI : 0;
+            }
+          }
+          lastAuthAt = performance.now();
+          break;
+        }
         case 'USER_JOIN': updatePlayerMarker(msg.userId, msg.position, false); break;
         case 'USER_LEAVE': {
           const m = players.get(msg.userId);

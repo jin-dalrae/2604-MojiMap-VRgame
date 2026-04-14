@@ -245,6 +245,7 @@ export class PortalSystem extends createSystem({}) {
   private spawnedEntities = new Map<string, SpawnedItem>();
   private avatars = new Map<string, AvatarRecord>();
   private lastPosSend = 0;
+  private lastItemStateBroadcastAt = 0;
   private tempPos!: Vector3;
   private tempFwd!: Vector3;
   private tempGrip!: Vector3;
@@ -1418,6 +1419,32 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
+  // Push current world positions of every dynamic item (enemies +
+  // birds) at ~10 Hz so the broadcast page (and any other clients)
+  // can render the same scene the VR player sees instead of running
+  // their own divergent AI. Cheap — ~10 items × ~30 bytes × 10 Hz.
+  private tickItemStateBroadcast() {
+    const now = performance.now();
+    if (now - this.lastItemStateBroadcastAt < 100) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    const items: Array<{
+      key: string; x: number; y: number; z: number; birdState?: string;
+    }> = [];
+    for (const [key, item] of this.spawnedEntities) {
+      if (item.role !== 'enemy' && item.role !== 'bird') continue;
+      const p = item.object3D.position;
+      const entry: { key: string; x: number; y: number; z: number; birdState?: string } = {
+        key, x: p.x, y: p.y, z: p.z,
+      };
+      if (item.role === 'bird') entry.birdState = item.birdState;
+      items.push(entry);
+    }
+    if (items.length === 0) return;
+    this.lastItemStateBroadcastAt = now;
+    this.ws.send(JSON.stringify({ type: 'ITEM_STATES', items }));
+  }
+
   // Walls (incl. wood) may be flashing red from a sword hit. Each frame
   // we either paint the flash color or snap back to the base color —
   // unconditional writes are cheap for Three.js Color and keep this
@@ -1608,6 +1635,9 @@ export class PortalSystem extends createSystem({}) {
     this.tickWallFlash();
     // Ready-check is active only during a pending round.
     this.tickReadyCheck();
+
+    // Authoritative item-position broadcast for spectators (~10 Hz).
+    this.tickItemStateBroadcast();
 
     // Send VR player head position at ~10 Hz
     const now = performance.now();

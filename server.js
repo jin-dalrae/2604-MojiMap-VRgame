@@ -213,6 +213,13 @@ wss.on('connection', (ws) => {
         broadcast({ type: 'GRID_CLEAR_ALL' });
         break;
 
+      case 'ITEM_STATES':
+        // Authoritative live positions of dynamic items (enemies + birds)
+        // from a VR client. Server just relays — too transient to store
+        // and not part of the persistent grid layout.
+        broadcast({ type: 'ITEM_STATES', items: msg.items }, ws);
+        break;
+
       case 'ROUND_START':
         // Legacy — straight-to-start path (kept for any client that
         // hasn't migrated to the pending flow).

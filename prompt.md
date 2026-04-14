@@ -408,3 +408,9 @@ its not triggering the jump action, and when i manually jump, its not jumping it
 ```
 there is also a broadcast page, and it should have a full version of the app running, not just the emojis, and by that i mean there needs to be teh abioity fo poepl to spectate and see all the action.
 ```
+
+## 2026-04-15T03:30:00Z
+
+```
+but right now the sprights arent matching i think you aren't making actual locatinos of the sprites. i guess that woulld be syncing more server things, so maybe woudl that overwhelm the server or get too expensive to update all thos sprites locations? you have them moving on thre own, but like it should match the game state exaclty
+```
