@@ -836,26 +836,33 @@ export class PortalSystem extends createSystem({}) {
           pos.z = nz;
         }
       } else {
-        // Ghost + anything else falls back to chase-closest behaviour.
-        if (targets.length === 0) continue;
-        let target = targets[0];
-        let bestD2 = Infinity;
-        for (const p of targets) {
-          const dx = p.x - pos.x;
-          const dz = p.z - pos.z;
-          const d2 = dx * dx + dz * dz;
-          if (d2 < bestD2) { bestD2 = d2; target = p; }
+        // Ghost + anything else: chase closest LIVE player. If every
+        // player in range is dead (spectator), drift back to origin so
+        // the ghost visibly disengages — dead players complained they
+        // were still being shadowed.
+        let targetX: number, targetZ: number;
+        if (targets.length === 0) {
+          targetX = item.origin[0];
+          targetZ = item.origin[2];
+        } else {
+          let target = targets[0];
+          let bestD2 = Infinity;
+          for (const p of targets) {
+            const dx = p.x - pos.x;
+            const dz = p.z - pos.z;
+            const d2 = dx * dx + dz * dz;
+            if (d2 < bestD2) { bestD2 = d2; target = p; }
+          }
+          targetX = target.x;
+          targetZ = target.z;
         }
-        const dx = target.x - pos.x;
-        const dz = target.z - pos.z;
+        const dx = targetX - pos.x;
+        const dz = targetZ - pos.z;
         const dist = Math.hypot(dx, dz);
         if (dist > 0.05) {
           const step = Math.min(dist, stats.speed * deltaSeconds);
-          const nx = pos.x + (dx * step) / dist;
-          const nz = pos.z + (dz * step) / dist;
-          // Ghost ignores walls; fall through without checks.
-          pos.x = nx;
-          pos.z = nz;
+          pos.x += (dx * step) / dist;
+          pos.z += (dz * step) / dist;
         }
       }
 
