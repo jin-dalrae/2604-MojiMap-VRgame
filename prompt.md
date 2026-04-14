@@ -360,3 +360,9 @@ when you get the poo item, you should get unlimited poo throws. add a poo in the
 ```
 bombs can also blow up brown walls. make birds worth hte most points of everything.
 ```
+
+## 2026-04-15T01:25:00Z
+
+```
+the first couple times i use my voice to say poopoodoodoo it works really well, then after that it stops workign with voice, whats up with that.
+```
