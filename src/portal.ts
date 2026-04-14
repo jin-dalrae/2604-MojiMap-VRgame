@@ -166,12 +166,26 @@ export class PortalSystem extends createSystem({}) {
   // Set externally (e.g. by a future SharedSpaceSystem that requests the "shared"
   // feature and listens for the reference space UUID); forwarded on every update.
   public spaceId: string | null = null;
-  // Pre-allocated to avoid update() allocations
+  // Pre-allocated to avoid update() allocations. The stats fields ride
+  // along with every position packet so observers (portal/broadcast) can
+  // render a leaderboard at the native 10 Hz update cadence.
   private posMsg: {
     type: string;
     position: { x: number; z: number; heading: number; pitch: number };
+    score: number;
+    health: number;
+    goalsCollected: number;
+    goalsTotal: number;
     spaceId: string | null;
-  } = { type: 'PLAYER_POSITION', position: { x: 0, z: 0, heading: 0, pitch: 0 }, spaceId: null };
+  } = {
+    type: 'PLAYER_POSITION',
+    position: { x: 0, z: 0, heading: 0, pitch: 0 },
+    score: 0,
+    health: MAX_HEALTH,
+    goalsCollected: 0,
+    goalsTotal: 0,
+    spaceId: null,
+  };
 
   init() {
     this.tempPos = new Vector3();
@@ -680,7 +694,11 @@ export class PortalSystem extends createSystem({}) {
     this.player.head.getWorldDirection(this.tempFwd);
     this.posMsg.position.heading = Math.atan2(-this.tempFwd.x, -this.tempFwd.z);
     this.posMsg.position.pitch = -Math.asin(Math.max(-1, Math.min(1, this.tempFwd.y)));
-    this.posMsg.spaceId = this.spaceId;
+    this.posMsg.score          = this.score.peek();
+    this.posMsg.health         = this.playerHealth.peek();
+    this.posMsg.goalsCollected = this.goalsCollected.peek();
+    this.posMsg.goalsTotal     = this.goalsTotal.peek();
+    this.posMsg.spaceId        = this.spaceId;
     this.ws.send(JSON.stringify(this.posMsg));
     this.lastPosSend = now;
   }

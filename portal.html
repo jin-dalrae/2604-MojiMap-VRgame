@@ -117,6 +117,86 @@
       }
       .btn-primary.running:hover { background: #dc2626; }
 
+      /* ── Leaderboard (VR player scores) ── */
+      .leaderboard {
+        position: fixed;
+        top: 56px;
+        right: 12px;
+        background: rgba(18,18,22,0.92);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        min-width: 180px;
+        max-width: 260px;
+        font-size: 11px;
+        z-index: 40;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+        backdrop-filter: blur(6px);
+      }
+      .lb-title {
+        font-size: 9px;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 6px;
+        letter-spacing: 0.6px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .lb-row {
+        display: grid;
+        grid-template-columns: 12px 1fr auto 34px;
+        gap: 8px;
+        align-items: center;
+        padding: 4px 0;
+        border-top: 1px solid rgba(63,63,70,0.4);
+      }
+      .lb-row:first-child { border-top: none; }
+      .lb-rank-1 .lb-name { color: #fbbf24; font-weight: 700; }
+      .lb-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--pcolor, #666);
+        box-shadow: 0 0 6px var(--pcolor, transparent);
+      }
+      .lb-name {
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 10.5px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .lb-score {
+        color: #fbbf24;
+        font-weight: 700;
+        font-family: ui-monospace, monospace;
+      }
+      .lb-health {
+        color: var(--muted);
+        font-size: 10px;
+        font-family: ui-monospace, monospace;
+        text-align: right;
+      }
+      .lb-health.warning { color: #f59e0b; }
+      .lb-health.critical { color: #ef4444; }
+      .lb-empty {
+        color: var(--muted);
+        font-size: 10px;
+        font-style: italic;
+        padding: 4px 0;
+      }
+
+      @media (max-width: 900px) {
+        .leaderboard {
+          top: 48px;
+          right: 8px;
+          min-width: 140px;
+          padding: 6px 8px;
+          font-size: 10px;
+        }
+      }
+
       /* ── Role-based cell tinting ── */
       .cell[data-role="weapon-sword"],
       .cell[data-role="weapon-gun"],
@@ -455,6 +535,12 @@
       </div>
     </header>
 
+    <!-- Live leaderboard (VR players who've sent at least one position) -->
+    <div class="leaderboard" id="leaderboard">
+      <div class="lb-title"><span>Players</span><span id="lb-count">0</span></div>
+      <div id="lb-entries"><div class="lb-empty">Waiting for VR players…</div></div>
+    </div>
+
     <!-- Mobile layout: grid area directly in body -->
     <div class="grid-area" id="grid-area-mobile">
       <div class="grid-meta">Birds Eye · 20×10 · tap item below then tap cell</div>
@@ -618,8 +704,11 @@
               renderTimer();
               // Clear any stale markers then rebuild from the snapshot.
               for (const userId of [...players.keys()]) removePlayer(userId);
+              playerStats.clear();
+              renderLeaderboard();
               for (const [userId, user] of Object.entries(msg.users || {})) {
                 updatePlayer(userId, user.position);
+                updatePlayerStats(userId, user);
               }
               break;
 
@@ -644,10 +733,14 @@
 
             case 'USER_LEAVE':
               removePlayer(msg.userId);
+              playerStats.delete(msg.userId);
+              renderLeaderboard();
               break;
 
             case 'PLAYER_POSITION':
               updatePlayer(msg.userId, msg.position);
+              // Score/health ride along with every position packet.
+              updatePlayerStats(msg.userId, msg);
               break;
 
             case 'ROUND_START':
@@ -657,6 +750,13 @@
               setRoundRunning(true);
               startTick();
               renderTimer();
+              // Wipe the visible leaderboard so stale numbers don't hang
+              // around before the first position packet arrives.
+              for (const s of playerStats.values()) {
+                s.score = 0; s.health = 100;
+                s.goalsCollected = 0; s.goalsTotal = 0;
+              }
+              renderLeaderboard();
               break;
 
             case 'ROUND_END':
@@ -733,6 +833,70 @@
           if (s) { s.dot.remove(); s.cone.remove(); }
         }
         players.delete(userId);
+      }
+
+      // ── Leaderboard state ──────────────────────────────────
+      // Keyed by userId — only VR clients that send PLAYER_POSITION
+      // appear. Portal/observer connections have no stats so they're
+      // silently excluded.
+      const playerStats = new Map();
+
+      function updatePlayerStats(userId, s) {
+        if (!s) return;
+        // Portal's own connection never sends stats; bail if the packet
+        // has no score field at all (e.g. legacy position-only messages).
+        const hasStats =
+          s.score != null || s.health != null || s.goalsCollected != null;
+        if (!hasStats) return;
+        playerStats.set(userId, {
+          score: s.score ?? 0,
+          health: s.health ?? 100,
+          goalsCollected: s.goalsCollected ?? 0,
+          goalsTotal: s.goalsTotal ?? 0,
+        });
+        renderLeaderboard();
+      }
+
+      function renderLeaderboard() {
+        const entriesEl = document.getElementById('lb-entries');
+        const countEl   = document.getElementById('lb-count');
+        const rows = [...playerStats.entries()];
+
+        // Rank by goals collected first (primary objective), then raw score,
+        // then health as a tiebreaker. Fits the game's scoring intent.
+        rows.sort((a, b) => {
+          const ga = a[1].goalsCollected, gb = b[1].goalsCollected;
+          if (ga !== gb) return gb - ga;
+          if (a[1].score !== b[1].score) return b[1].score - a[1].score;
+          return b[1].health - a[1].health;
+        });
+
+        countEl.textContent = rows.length;
+
+        if (rows.length === 0) {
+          entriesEl.innerHTML = '<div class="lb-empty">Waiting for VR players…</div>';
+          return;
+        }
+
+        entriesEl.innerHTML = rows.map(([userId, s], i) => {
+          const color = colorForUser(userId);
+          const short = userId.slice(0, 6);
+          const label = userId === myUserId ? `${short} (you)` : short;
+          const progress = s.goalsTotal > 0
+            ? `${s.goalsCollected}/${s.goalsTotal}`
+            : String(s.score);
+          const hpClass =
+            s.health <= 25 ? ' critical' :
+            s.health <= 50 ? ' warning' : '';
+          return (
+            `<div class="lb-row lb-rank-${i + 1}">` +
+              `<span class="lb-dot" style="--pcolor: ${color.solid}"></span>` +
+              `<span class="lb-name">${label}</span>` +
+              `<span class="lb-score">⭐ ${progress}</span>` +
+              `<span class="lb-health${hpClass}">${Math.ceil(s.health)}</span>` +
+            `</div>`
+          );
+        }).join('');
       }
 
       function updatePlayer(userId, pos) {

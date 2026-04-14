@@ -46,6 +46,15 @@ function startRound(duration) {
   if (round.timeout) clearTimeout(round.timeout);
   round.duration = d;
   round.endsAt = Date.now() + d * 1000;
+  // Wipe cached player stats so the leaderboard doesn't show last round's
+  // scores until a client sends its first PLAYER_POSITION. Actual truth
+  // lives on the VR clients — this just normalizes initial display.
+  for (const u of users.values()) {
+    u.score = 0;
+    u.health = 100;
+    u.goalsCollected = 0;
+    u.goalsTotal = 0;
+  }
   console.log(`[⏱] Round started (${d}s, ends at ${new Date(round.endsAt).toISOString()})`);
   broadcast({ type: 'ROUND_START', duration: d, endsAt: round.endsAt });
   // Server is authoritative: auto-broadcast ROUND_END when the timer fires.
@@ -113,9 +122,15 @@ wss.on('connection', (ws) => {
         break;
 
       case 'PLAYER_POSITION': {
+        // Stats ride along with each position packet so observers can
+        // render a live leaderboard without a separate message type.
         const record = {
           position: msg.position,
           spaceId: msg.spaceId ?? null,
+          score: msg.score ?? 0,
+          health: msg.health ?? 100,
+          goalsCollected: msg.goalsCollected ?? 0,
+          goalsTotal: msg.goalsTotal ?? 0,
         };
         const firstTime = !ws.isPresent;
         ws.isPresent = true;
@@ -136,6 +151,10 @@ wss.on('connection', (ws) => {
           userId,
           position: record.position,
           spaceId: record.spaceId,
+          score: record.score,
+          health: record.health,
+          goalsCollected: record.goalsCollected,
+          goalsTotal: record.goalsTotal,
         }, ws);
         break;
       }
