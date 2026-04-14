@@ -12,31 +12,19 @@ import {
   DoubleSide,
   Object3D,
 } from "@iwsdk/core";
-import { signal, type Signal } from "@preact/signals-core";
-
-// ── Item roles ───────────────────────────────────────────────
-// Portal tags each GRID_PLACE with one of these; VR branches visuals
-// and (Phase 3) gameplay off the role rather than the specific emoji.
-type ItemRole =
-  | "weapon-sword"
-  | "weapon-gun"
-  | "goal"
-  | "powerup"
-  | "obstacle-damage"
-  | "enemy"
-  | "decor";
-
-function isPickup(role: ItemRole): boolean {
-  return (
-    role === "weapon-sword" ||
-    role === "weapon-gun" ||
-    role === "goal" ||
-    role === "powerup"
-  );
-}
-function isHazard(role: ItemRole): boolean {
-  return role === "obstacle-damage" || role === "enemy";
-}
+import { type Signal } from "@preact/signals-core";
+import {
+  GameState,
+  isPickup,
+  isHazard,
+  MAX_HEALTH,
+  GOAL_POINTS,
+  POWERUP_HEAL,
+  FIRE_DPS,
+  FIRE_RADIUS,
+  PICKUP_RADIUS,
+  type ItemRole,
+} from "./game-state.js";
 
 // ── Grid coordinate mapping ──────────────────────────────────
 // Portal grid: 20 cols × 10 rows
@@ -140,11 +128,14 @@ export class PortalSystem extends createSystem({}) {
   private tempFwd!: Vector3;
   private userId: string | null = null;
 
-  // Round state. Exposed via `world.globals` so future systems
-  // (weapons, HUD, enemy AI) can peek/subscribe without coupling to
-  // the WebSocket connection.
+  // Round/game state signals — shared via world.globals. PortalSystem
+  // writes most of these; WeaponSystem and HUDSystem only read.
   private roundRunning!: Signal<boolean>;
   private roundEndsAt!: Signal<number>; // ms epoch, 0 when idle
+  private score!: Signal<number>;
+  private playerHealth!: Signal<number>;
+  private equippedLeft!: Signal<"sword" | null>;
+  private equippedRight!: Signal<"gun" | null>;
   // spaceId is the Quest Shared Spaces XRSharedReferenceSpace UUID when available.
   // Set externally (e.g. by a future SharedSpaceSystem that requests the "shared"
   // feature and listens for the reference space UUID); forwarded on every update.
@@ -160,13 +151,13 @@ export class PortalSystem extends createSystem({}) {
     this.tempPos = new Vector3();
     this.tempFwd = new Vector3();
 
-    // Publish round signals so other systems can read them without
-    // needing a ref to PortalSystem. Peek in hot paths; subscribe for edges.
     const globals = this.world.globals as Record<string, unknown>;
-    this.roundRunning = (globals.roundRunning as Signal<boolean>) ?? signal(false);
-    this.roundEndsAt = (globals.roundEndsAt as Signal<number>) ?? signal(0);
-    globals.roundRunning = this.roundRunning;
-    globals.roundEndsAt = this.roundEndsAt;
+    this.roundRunning  = GameState.roundRunning(globals);
+    this.roundEndsAt   = GameState.roundEndsAt(globals);
+    this.score         = GameState.score(globals);
+    this.playerHealth  = GameState.playerHealth(globals);
+    this.equippedLeft  = GameState.equippedLeft(globals);
+    this.equippedRight = GameState.equippedRight(globals);
 
     this.connectWS();
   }
@@ -220,14 +211,24 @@ export class PortalSystem extends createSystem({}) {
 
       case 'ROUND_START':
         console.log(`[Round] Started — ends at ${new Date(msg.endsAt).toISOString()}`);
+        // Fresh run: clear inventory + score, heal up. WeaponSystem reacts
+        // via the signal subscription and despawns any weapon meshes.
+        this.score.value = 0;
+        this.playerHealth.value = MAX_HEALTH;
+        this.equippedLeft.value = null;
+        this.equippedRight.value = null;
         this.roundEndsAt.value = msg.endsAt;
         this.roundRunning.value = true;
         break;
 
       case 'ROUND_END':
-        console.log(`[Round] Ended (${msg.reason})`);
+        console.log(`[Round] Ended (${msg.reason}) — final score: ${this.score.peek()}`);
         this.roundEndsAt.value = 0;
         this.roundRunning.value = false;
+        // Drop weapons at round end per design ("if you drop your weapons,
+        // they despawn"). Health stays so the player sees their final state.
+        this.equippedLeft.value = null;
+        this.equippedRight.value = null;
         break;
 
       case 'GRID_UPDATE':
@@ -396,10 +397,67 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
-  update() {
+  // Locally-authoritative collision: each client checks its own head
+  // against the shared grid items. On pickup we broadcast GRID_CLEAR so
+  // other clients see the item vanish. No server-side validation yet —
+  // trusting clients is fine for a prototype, not a competitive game.
+  private handleCollisions(deltaSeconds: number) {
+    this.player.head.getWorldPosition(this.tempPos);
+
+    const pickupR2 = PICKUP_RADIUS * PICKUP_RADIUS;
+    const fireR2   = FIRE_RADIUS   * FIRE_RADIUS;
+
+    // Snapshot keys first: despawning during Map iteration is fine, but
+    // we also want deterministic order in case multiple pickups overlap.
+    for (const [key, item] of [...this.spawnedEntities]) {
+      const d2 = this.tempPos.distanceToSquared(item.sprite.position);
+
+      if (isPickup(item.role) && d2 < pickupR2) {
+        this.applyPickup(item.role);
+        this.despawnItem(key);
+        // Tell the server so portal + broadcast + other VR peers drop it too.
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: 'GRID_CLEAR', key }));
+        }
+        continue;
+      }
+
+      if (item.role === 'obstacle-damage' && d2 < fireR2) {
+        const current = this.playerHealth.peek();
+        const next = Math.max(0, current - FIRE_DPS * deltaSeconds);
+        if (next !== current) this.playerHealth.value = next;
+      }
+    }
+  }
+
+  private applyPickup(role: ItemRole) {
+    switch (role) {
+      case 'weapon-sword':
+        this.equippedLeft.value = 'sword';
+        break;
+      case 'weapon-gun':
+        this.equippedRight.value = 'gun';
+        break;
+      case 'goal':
+        this.score.value = this.score.peek() + GOAL_POINTS;
+        break;
+      case 'powerup':
+        this.playerHealth.value = Math.min(
+          MAX_HEALTH,
+          this.playerHealth.peek() + POWERUP_HEAL,
+        );
+        break;
+    }
+  }
+
+  update(delta: number) {
     const time = performance.now() / 1000;
     const roundRunning = this.roundRunning.peek();
     this.animateItems(time, roundRunning);
+
+    // Gameplay interactions only fire while the round is live. Gives the
+    // planner time to place items before the contestant can grab them.
+    if (roundRunning) this.handleCollisions(delta);
 
     // Send VR player head position at ~10 Hz
     const now = performance.now();
