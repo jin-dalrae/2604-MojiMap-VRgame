@@ -402,3 +402,9 @@ ok, now can you add a feather item, and if you pick it up, you get a mega jump a
 ```
 its not triggering the jump action, and when i manually jump, its not jumping its just staying at ground level and shaking up and down… use IWSDK locomotor jump and fix the apostrophe stripping in the matcher.
 ```
+
+## 2026-04-15T03:10:00Z
+
+```
+there is also a broadcast page, and it should have a full version of the app running, not just the emojis, and by that i mean there needs to be teh abioity fo poepl to spectate and see all the action.
+```
