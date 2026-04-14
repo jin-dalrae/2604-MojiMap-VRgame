@@ -119,6 +119,13 @@ export const FX = {
     setTimeout(() => beep(120, 200, "square", 0.18, 80), 45);
     pulse(gamepad, 1.0, 140);
   },
+  birdHit: (gamepad?: StatefulGamepad | null) => {
+    // Squawky chirp — two short high-pitched triangle blips
+    beep(1450, 90, "triangle", 0.22, 1900);
+    setTimeout(() => beep(1700, 70, "triangle", 0.18, 2100), 55);
+    setTimeout(() => beep(1100, 80, "triangle", 0.16, 800), 120);
+    pulse(gamepad, 0.5, 50);
+  },
   warp: (gamepad?: StatefulGamepad | null) => {
     // Descending whoosh — two overlapping tones sliding down
     beep(1200, 260, "sine", 0.22, 220);

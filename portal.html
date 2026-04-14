@@ -320,6 +320,10 @@
       .item[data-role="spawn"] {
         box-shadow: inset 0 0 0 1px rgba(16,185,129,0.5), 0 0 6px rgba(16,185,129,0.25);
       }
+      .cell[data-role="bird"],
+      .item[data-role="bird"] {
+        box-shadow: inset 0 0 0 1px rgba(56,189,248,0.55), 0 0 6px rgba(56,189,248,0.3);
+      }
       .item[data-role="weapon-sword"],
       .item[data-role="weapon-gun"],
       .item[data-role="goal"],
@@ -688,6 +692,9 @@
       <div class="item" data-type="target"   data-icon="🎯" data-label="Target">   <span class="item-icon">🎯</span><span class="item-label">Target</span></div>
       <div class="item" data-type="heart"    data-icon="❤️" data-label="Heart">    <span class="item-icon">❤️</span><span class="item-label">Heart</span></div>
       <div class="palette-divider"></div>
+      <span class="palette-section">Wildlife</span>
+      <div class="item" data-type="bird"     data-icon="🦅" data-label="Eagle">    <span class="item-icon">🦅</span><span class="item-label">Eagle</span></div>
+      <div class="palette-divider"></div>
       <span class="palette-section">Hazards</span>
       <div class="item" data-type="fire"     data-icon="🔥" data-label="Fire">     <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
       <div class="item" data-type="robot"    data-icon="🤖" data-label="Robot">    <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
@@ -713,6 +720,8 @@
         <div class="item" data-type="gem"      data-icon="💎" data-label="Gem">      <span class="item-icon">💎</span><span class="item-label">Gem</span></div>
         <div class="item" data-type="target"   data-icon="🎯" data-label="Target">   <span class="item-icon">🎯</span><span class="item-label">Target</span></div>
         <div class="item" data-type="heart"    data-icon="❤️" data-label="Heart">    <span class="item-icon">❤️</span><span class="item-label">Heart</span></div>
+        <div class="palette-section">Wildlife</div>
+        <div class="item" data-type="bird"     data-icon="🦅" data-label="Eagle">    <span class="item-icon">🦅</span><span class="item-label">Eagle</span></div>
         <div class="palette-section">Hazards</div>
         <div class="item" data-type="fire"     data-icon="🔥" data-label="Fire">     <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
         <div class="item" data-type="robot"    data-icon="🤖" data-label="Robot">    <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
@@ -760,6 +769,7 @@
         '🔥': 'obstacle-damage',
         '🤖': 'enemy', '👻': 'enemy', '💀': 'enemy',
         '🪑': 'spawn',
+        '🦅': 'bird',
         // everything else → 'decor' (falls through)
       };
       function roleFor(icon) { return ROLE_BY_ICON[icon] || 'decor'; }

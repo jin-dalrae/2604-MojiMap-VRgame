@@ -44,6 +44,17 @@ import {
   BOARD_HALF_D,
   BOARD_MIN_DIM,
   HAZARD_COOLDOWN_MS,
+  BIRD_HP,
+  BIRD_SPEED,
+  BIRD_FLIGHT_HEIGHT,
+  BIRD_FLAP_AMP,
+  BIRD_FLAP_FREQ,
+  BIRD_DRIFT_AMP,
+  BIRD_DRIFT_FREQ,
+  BIRD_TURN_P_PER_SEC,
+  BIRD_FALL_SPEED,
+  BIRD_HIT_FLASH_MS,
+  BIRD_POINTS,
   enemyBehavior,
   type ItemRole,
 } from "./game-state.js";
@@ -166,10 +177,15 @@ type SpawnedItem = {
   nextDamageableAt: number; // ms epoch; 0 = always hittable
   // Per-variant AI scratch state. Not all fields apply to every type;
   // init per spawnItem.
-  heading: number;     // robot: current direction (radians)
+  heading: number;     // robot + bird: current flight direction
   radius: number;      // skull: circle radius around origin
   omega: number;       // skull: angular velocity (rad/s, signed)
-  phase: number;       // skull: phase offset into circle
+  phase: number;       // skull / bird: phase offset
+  // Bird-only: 'flying' while alive, 'falling' after kill shot, then
+  // 'grounded' when it hits the floor and stays upside-down.
+  birdState: 'flying' | 'falling' | 'grounded';
+  // Red flash window — used by birds for the non-lethal hit glow.
+  hitFlashUntil: number; // ms epoch
 };
 
 export class PortalSystem extends createSystem({}) {
@@ -259,19 +275,103 @@ export class PortalSystem extends createSystem({}) {
     GameActions.setFindEnemyAt(globals, (x, y, z, r2) => this.findEnemyAt(x, y, z, r2));
 
     this.connectWS();
+    this.setupKeyboard();
   }
 
-  // Nearest enemy within squared radius, or null. Horizontal-only — a
-  // projectile's Y drift shouldn't cost it an otherwise-clean hit given
-  // that enemies are grid-anchored at ground height.
-  private findEnemyAt(x: number, _y: number, z: number, r2: number): string | null {
+  // Browser/keyboard shortcuts for testing in the emulator (the real
+  // controllers still work unchanged — these just fire the same actions).
+  //
+  //   Space / Enter → primary action:
+  //     • pending + near chair  → confirm ROUND_READY
+  //     • round running + gun   → fire the squirt gun
+  //   G → force pickup of the nearest pickup item within 2m
+  private setupKeyboard() {
+    const handler = (e: KeyboardEvent) => {
+      // Ignore when typing in an input (in case the HUD ever gets one).
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (e.repeat) return;
+      switch (e.code) {
+        case 'Space':
+        case 'Enter':
+          e.preventDefault();
+          this.primaryAction();
+          break;
+        case 'KeyG':
+          e.preventDefault();
+          this.forcePickupNearest();
+          break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    this.cleanupFuncs.push(() => window.removeEventListener('keydown', handler));
+  }
+
+  // Unified "primary action" — whatever the right trigger would do.
+  private primaryAction() {
+    // Ready-check takes priority: if the round is pending and we're
+    // near the chair, confirm. This mirrors the xr_select path.
+    if (this.roundPending.peek()) {
+      for (const item of this.spawnedEntities.values()) {
+        if (item.role !== 'spawn' && item.type !== 'chair') continue;
+        this.player.head.getWorldPosition(this.tempPos);
+        const dx = this.tempPos.x - item.origin[0];
+        const dz = this.tempPos.z - item.origin[2];
+        if (dx * dx + dz * dz <= CHAIR_READY_RADIUS * CHAIR_READY_RADIUS) {
+          if (this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type: 'ROUND_READY' }));
+          }
+          return;
+        }
+      }
+    }
+    // Otherwise fire the gun if equipped.
+    if (this.equippedRight.peek() === 'gun' && this.roundRunning.peek()) {
+      const fire = GameActions.fireProjectile(this.world.globals as Record<string, unknown>);
+      fire?.();
+    }
+  }
+
+  // Browser helper — grab the nearest pickup within ~2m without waiting
+  // for auto-proximity. Makes weapon testing quick in the emulator.
+  private forcePickupNearest() {
+    this.player.head.getWorldPosition(this.tempPos);
+    let nearestKey: string | null = null;
+    let nearestD2 = 4; // 2m squared
+    for (const [key, item] of this.spawnedEntities) {
+      if (!isPickup(item.role)) continue;
+      const dx = this.tempPos.x - item.object3D.position.x;
+      const dz = this.tempPos.z - item.object3D.position.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < nearestD2) { nearestD2 = d2; nearestKey = key; }
+    }
+    if (!nearestKey) return;
+    const item = this.spawnedEntities.get(nearestKey)!;
+    this.applyPickup(item.role);
+    this.despawnItem(nearestKey);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'GRID_CLEAR', key: nearestKey }));
+    }
+  }
+
+  // Nearest hittable target within squared radius, or null. Birds count
+  // as targets too — they're killable by the gun like enemies. Grounded
+  // dead birds are skipped so droplets don't re-hit the corpse.
+  private findEnemyAt(x: number, y: number, z: number, r2: number): string | null {
     let bestKey: string | null = null;
     let bestD2 = r2;
     for (const [key, item] of this.spawnedEntities) {
-      if (item.role !== 'enemy') continue;
+      const isTarget =
+        item.role === 'enemy' ||
+        (item.role === 'bird' && item.birdState === 'flying');
+      if (!isTarget) continue;
       const dx = item.object3D.position.x - x;
+      // Birds fly at altitude — include Y so droplets have to actually
+      // be going up at the bird to land a hit. For grounded enemies
+      // the low Y drift is forgiven.
+      const dy =
+        item.role === 'bird' ? item.object3D.position.y - y : 0;
       const dz = item.object3D.position.z - z;
-      const d2 = dx * dx + dz * dz;
+      const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 < bestD2) {
         bestD2 = d2;
         bestKey = key;
@@ -280,11 +380,14 @@ export class PortalSystem extends createSystem({}) {
     return bestKey;
   }
 
-  // Returns true if the hit killed the enemy (so callers can skip further
+  // Returns true if the hit killed the target (so callers can skip further
   // processing against a now-gone entity).
   private damageEnemy(key: string, amount: number): boolean {
     const item = this.spawnedEntities.get(key);
-    if (!item || item.role !== 'enemy') return false;
+    if (!item) return false;
+    if (item.role === 'bird') return this.damageBird(key, item, amount);
+    if (item.role !== 'enemy') return false;
+
     item.hp -= amount;
     if (item.hp <= 0) {
       this.score.value = this.score.peek() + enemyStats(item.type).killPoints;
@@ -292,8 +395,25 @@ export class PortalSystem extends createSystem({}) {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'GRID_CLEAR', key }));
       }
-      // Either hand works for the kill thump; prefer whichever has a pad.
       FX.enemyKill(this.input.gamepads.right ?? this.input.gamepads.left);
+      return true;
+    }
+    return false;
+  }
+
+  // Bird damage — first hit glows red + squawks; second hit kills +
+  // transitions into a fall to the floor (rendered upside-down on land).
+  // Does NOT broadcast GRID_CLEAR: the corpse is a local visual, so
+  // each client shoots the bird independently. Fine for a prototype.
+  private damageBird(key: string, item: SpawnedItem, amount: number): boolean {
+    if (item.birdState !== 'flying') return false; // falling/grounded = ignore
+    item.hp -= amount;
+    item.hitFlashUntil = performance.now() + BIRD_HIT_FLASH_MS;
+    FX.birdHit(this.input.gamepads.right ?? this.input.gamepads.left);
+    if (item.hp <= 0) {
+      item.birdState = 'falling';
+      this.score.value = this.score.peek() + BIRD_POINTS;
+      this.goalsCollected.value = this.goalsCollected.peek(); // no change — birds aren't goals
       return true;
     }
     return false;
@@ -587,6 +707,7 @@ export class PortalSystem extends createSystem({}) {
         hp: 0,
         nextDamageableAt: 0,
         heading: 0, radius: 0, omega: 0, phase: 0,
+        birdState: 'flying', hitFlashUntil: 0,
       });
       return;
     }
@@ -603,15 +724,21 @@ export class PortalSystem extends createSystem({}) {
     // Skull: random circle radius capped at the board's smaller dim,
     //        signed angular velocity, and phase so identical spawns
     //        don't move in lockstep.
+    // Bird:  random heading + phase so two eagles on the grid don't
+    //        move in lockstep. Also starts elevated and billboard-flipped
+    //        if sprite rotation was ever set on a previous life.
     let heading = 0, radius = 0, omega = 0, phase = 0;
     if (type === 'robot') {
       heading = Math.random() * Math.PI * 2;
     } else if (type === 'skull') {
-      // Random distance away from origin, up to the smaller play-space
-      // dimension. User accepted skulls leaving the board — no clamp here.
       radius = 1 + Math.random() * (BOARD_MIN_DIM - 1);
       omega = (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.8);
       phase = Math.random() * Math.PI * 2;
+    } else if (role === 'bird') {
+      heading = Math.random() * Math.PI * 2;
+      phase = Math.random() * Math.PI * 2;
+      sprite.position.y = BIRD_FLIGHT_HEIGHT; // start in the air
+      (sprite.material as SpriteMaterial).rotation = 0; // right-side up
     }
 
     this.spawnedEntities.set(key, {
@@ -622,9 +749,11 @@ export class PortalSystem extends createSystem({}) {
       type,
       baseSize,
       origin: [x, y, z],
-      hp: role === 'enemy' ? enemyStats(type).hp : 0,
+      hp: role === 'enemy' ? enemyStats(type).hp : role === 'bird' ? BIRD_HP : 0,
       nextDamageableAt: 0,
       heading, radius, omega, phase,
+      birdState: 'flying',
+      hitFlashUntil: 0,
     });
   }
 
@@ -812,6 +941,12 @@ export class PortalSystem extends createSystem({}) {
     }
 
     for (const item of this.spawnedEntities.values()) {
+      // Birds have their own AI track — handled separately since they
+      // fly, fall, and land rather than chasing/wandering like enemies.
+      if (item.role === 'bird') {
+        this.tickBird(item, deltaSeconds, time);
+        continue;
+      }
       if (item.role !== 'enemy') continue;
       const stats = enemyStats(item.type);
       const pos = item.object3D.position;
@@ -871,6 +1006,57 @@ export class PortalSystem extends createSystem({}) {
         pos.y = item.origin[1] + 0.5 + Math.sin(time * stats.bobSpeed) * stats.bobAmp;
       }
     }
+  }
+
+  // Bird AI — three states.
+  //  - flying: erratic wandering in the air, ignoring walls and edges.
+  //  - falling: straight down at BIRD_FALL_SPEED until it hits the floor.
+  //  - grounded: sprite flipped upside-down, sits still forever.
+  private tickBird(item: SpawnedItem, deltaSeconds: number, time: number) {
+    const pos = item.object3D.position;
+    const mat = item.object3D.material as SpriteMaterial;
+
+    // Red-glow flash on non-lethal hit. SpriteMaterial.color multiplies
+    // with the texture, so setting it bright-red tints the emoji crimson
+    // while the hit cue plays. Returns to normal when the window expires.
+    const flashing = performance.now() < item.hitFlashUntil;
+    if (flashing) mat.color.setRGB(1.8, 0.25, 0.25);
+    else if (mat.color.r !== 1 || mat.color.g !== 1 || mat.color.b !== 1) {
+      mat.color.setRGB(1, 1, 1);
+    }
+
+    if (item.birdState === 'grounded') {
+      // Keep it pinned; upside-down rotation already applied on landing.
+      return;
+    }
+
+    if (item.birdState === 'falling') {
+      pos.y -= BIRD_FALL_SPEED * deltaSeconds;
+      if (pos.y <= 0.35) {
+        pos.y = 0.35;
+        item.birdState = 'grounded';
+        // Sprites are always camera-facing, but their image can be
+        // rotated in-plane — PI = upside-down.
+        mat.rotation = Math.PI;
+      }
+      return;
+    }
+
+    // Flying — sharp direction changes, fast flap + slow drift Y.
+    if (Math.random() < BIRD_TURN_P_PER_SEC * deltaSeconds) {
+      item.heading += (Math.random() - 0.5) * Math.PI;
+    }
+    // Smooth wobble on top so it looks like a confused bird, not a
+    // straight-line missile.
+    item.heading += Math.sin(time * 1.7 + item.phase) * 0.3 * deltaSeconds;
+
+    const speed = BIRD_SPEED + Math.sin(time * 2.1 + item.phase) * 0.35;
+    pos.x += Math.cos(item.heading) * speed * deltaSeconds;
+    pos.z += Math.sin(item.heading) * speed * deltaSeconds;
+
+    const flap  = Math.sin(time * BIRD_FLAP_FREQ + item.phase) * BIRD_FLAP_AMP;
+    const drift = Math.sin(time * BIRD_DRIFT_FREQ + item.phase * 0.3) * BIRD_DRIFT_AMP;
+    pos.y = BIRD_FLIGHT_HEIGHT + flap + drift;
   }
 
   private playerDied() {
