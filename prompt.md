@@ -294,3 +294,9 @@ how do i make a swing sword animation on a keyboard press like the letter E, sin
 ```
 if the sword makes contact with an enemy, they should be stunned for a split second and be pushed back a bit (only ghosts can be hit stun by the sword) the gun does not have this effect on enemies, its only swoard hitting ghost and robot. if the sword is swung and hits them then it does this, but not if the swoord is still. we need to do the swoard by contact, so this works by both when i press E and when the user swings by moving thier arm. we don't want a still sowrd to do anything, so check the speed at which its being swung, do a physics calculation so that if its moving at a certain speed when it makes contact, then it does damage.
 ```
+
+## 2026-04-14T23:55:00Z
+
+```
+the sowrd needs to be adjusted, because everything instan dies when it just touches them. and i'm not even swigning. i should have to do a big swing to actually make it damage.
+```

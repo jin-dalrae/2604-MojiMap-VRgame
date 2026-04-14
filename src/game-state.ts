@@ -159,7 +159,13 @@ export const SWORD_SWING_MS = 300;
 // Contact model: the tip has to be moving > SWORD_MIN_SPEED (m/s) to
 // register damage. A still sword does nothing; an arm swing or the
 // E-key animation both produce enough velocity to count.
-export const SWORD_MIN_SPEED = 1.5;
+//
+// Tuning: walking in VR moves the grip at ~1 m/s; a lunge or brisk
+// turn can push the tip to 2–3 m/s without anyone intending to swing.
+// A real forehand slash produces 5+ m/s at the tip, and the E-key
+// animation peaks around 13 m/s. A 5 m/s threshold reliably excludes
+// everything except a deliberate swing.
+export const SWORD_MIN_SPEED = 5.0;
 // Per-target post-hit cooldown so one swing doesn't chain 10 hits on
 // the same enemy while the tip sweeps through its hitbox.
 export const SWORD_HIT_COOLDOWN_MS = 380;
