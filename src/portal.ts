@@ -76,6 +76,25 @@ function gridToWorld(row: number, col: number): [number, number, number] {
   return [col - 9.5, 0.55, row - 4.5];
 }
 
+// Backfill a role for legacy items whose stored `role` is 'decor'.
+// Mirrors the portal's ROLE_BY_ICON mapping but keyed off `type`, since
+// type is the field that was always present even on early placements.
+const TYPE_TO_ROLE: Record<string, ItemRole> = {
+  sword:         'weapon-sword',
+  gun:           'weapon-gun',
+  poopoodoodoo:  'weapon-poo',
+  star:          'goal',
+  fire:          'obstacle-damage',
+  robot:         'enemy',
+  ghost:         'enemy',
+  skull:         'enemy',
+  bird:          'bird',
+  chair:         'spawn',
+};
+function roleFromType(type: string): ItemRole {
+  return TYPE_TO_ROLE[type] ?? 'decor';
+}
+
 // ── Emoji sprite factory ─────────────────────────────────────
 // Render the emoji onto a CanvasTexture wrapped in a Three.js Sprite so
 // it always faces the headset. For pickups we also paint a soft white
@@ -781,8 +800,13 @@ export class PortalSystem extends createSystem({}) {
     const [row, col] = key.split(',').map(Number);
     const [x, y, z] = gridToWorld(row, col);
 
-    const role: ItemRole = item.role ?? 'decor';
     const type = item.type ?? 'decor';
+    // Role normally arrives baked into the item (the portal stamps it
+    // at placement time). Items placed before a given role mapping
+    // existed will arrive as 'decor' though — backfill from `type` so
+    // pickups still pick up after you re-deploy the palette.
+    let role: ItemRole = item.role ?? 'decor';
+    if (role === 'decor') role = roleFromType(type);
     const baseSize = 1.1;
 
     // 🟦 cubes and 🟫 wood both render as 3D wall-shaped blocks. Cubes

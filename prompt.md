@@ -342,3 +342,9 @@ the poo is coming out of th backside of the user. it needs to come out of the fr
 ```
 its not working now, the poo is not leting me pik it up. it should auto pick up like the gun does
 ```
+
+## 2026-04-15T01:00:00Z
+
+```
+its not picking up the poo. it hsould pick up in the same way the gun picks up
+```
