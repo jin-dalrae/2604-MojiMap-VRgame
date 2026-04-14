@@ -24,6 +24,7 @@ import { FX, pulse } from "./game-fx.js";
 import {
   GameState,
   GameActions,
+  getPlayerStats,
   RESULT_DISPLAY_MS,
   type RoundEndReason,
   type RoundResult,
@@ -294,7 +295,7 @@ export class PortalSystem extends createSystem({}) {
   // render a leaderboard at the native 10 Hz update cadence.
   private posMsg: {
     type: string;
-    position: { x: number; z: number; heading: number; pitch: number };
+    position: { x: number; y: number; z: number; heading: number; pitch: number };
     score: number;
     health: number;
     goalsCollected: number;
@@ -303,7 +304,9 @@ export class PortalSystem extends createSystem({}) {
     spaceId: string | null;
   } = {
     type: 'PLAYER_POSITION',
-    position: { x: 0, z: 0, heading: 0, pitch: 0 },
+    // y rides along so spectators see the player jumping — the mega
+    // jump pumps the XROrigin's y, which is what we read here.
+    position: { x: 0, y: 0, z: 0, heading: 0, pitch: 0 },
     score: 0,
     health: MAX_HEALTH,
     goalsCollected: 0,
@@ -719,7 +722,35 @@ export class PortalSystem extends createSystem({}) {
         if (msg.userId !== this.userId) {
           this.updateAvatar(msg.userId, msg.position, !!msg.dead);
         }
+        // Stats ride along — useful for the spectator HUD scoreboard.
+        getPlayerStats(this.world.globals as Record<string, unknown>).set(msg.userId, {
+          score: msg.score ?? 0,
+          health: msg.health ?? 100,
+          goalsCollected: msg.goalsCollected ?? 0,
+          goalsTotal: msg.goalsTotal ?? 0,
+          dead: !!msg.dead,
+        });
         break;
+
+      case 'ITEM_STATES': {
+        // Authoritative item positions from a VR client. Only applied in
+        // spectator mode — VR clients are themselves authoritative for
+        // their own items and ignore inbound state.
+        if (!this.isSpectator()) break;
+        type StateEntry = { key: string; x: number; y: number; z: number; birdState?: string };
+        for (const i of msg.items as StateEntry[]) {
+          const it = this.spawnedEntities.get(i.key);
+          if (!it) continue;
+          it.object3D.position.set(i.x, i.y, i.z);
+          if (i.birdState && it.role === 'bird' && it.kind === 'sprite') {
+            const mat = (it.object3D as Sprite).material as SpriteMaterial;
+            mat.rotation = i.birdState === 'grounded' ? Math.PI : 0;
+            // Track the state so future visual logic can branch.
+            it.birdState = i.birdState as 'flying' | 'falling' | 'grounded';
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -796,7 +827,7 @@ export class PortalSystem extends createSystem({}) {
 
   private updateAvatar(
     userId: string,
-    pos: { x: number; z: number; heading?: number; pitch?: number },
+    pos: { x: number; y?: number; z: number; heading?: number; pitch?: number },
     dead = false,
   ) {
     if (!pos) return;
@@ -807,6 +838,7 @@ export class PortalSystem extends createSystem({}) {
     }
     this.setAvatarDead(av, dead);
     av.root.position.x = pos.x;
+    if (typeof pos.y === 'number') av.root.position.y = pos.y;
     av.root.position.z = pos.z;
     if (typeof pos.heading === 'number') {
       av.root.rotation.y = pos.heading;
@@ -1613,7 +1645,17 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
+  // Tiny helper — broadcast pages set isSpectator on globals before
+  // registering systems. Spectators only render; gameplay ticks bail.
+  private isSpectator(): boolean {
+    return GameState.isSpectator(this.world.globals as Record<string, unknown>).peek();
+  }
+
   update(delta: number) {
+    // Spectator (broadcast page) is a pure renderer — no AI, no
+    // gameplay ticks, no position broadcast back to the server.
+    if (this.isSpectator()) return;
+
     const time = performance.now() / 1000;
     const roundRunning = this.roundRunning.peek();
     this.animateItems(time, roundRunning);
@@ -1646,6 +1688,7 @@ export class PortalSystem extends createSystem({}) {
 
     this.player.head.getWorldPosition(this.tempPos);
     this.posMsg.position.x = this.tempPos.x;
+    this.posMsg.position.y = this.tempPos.y;
     this.posMsg.position.z = this.tempPos.z;
     this.player.head.getWorldDirection(this.tempFwd);
     this.posMsg.position.heading = Math.atan2(-this.tempFwd.x, -this.tempFwd.z);

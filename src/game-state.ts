@@ -278,7 +278,25 @@ export const GameState = {
   // 🪶 mega-jump ability — picking up a feather grants unlimited
   // peacock-phrase jumps. Same lifecycle as hasBomb.
   hasMegaJump:    (g: Globals) => getOrInit<boolean>(g, "hasMegaJump", false),
+  // True on the broadcast (spectator) page. PortalSystem and friends
+  // gate their gameplay ticks on this — spectator only renders.
+  isSpectator:    (g: Globals) => getOrInit<boolean>(g, "isSpectator", false),
 };
+
+// Per-user live stats, exposed on globals so the spectator HUD can
+// read it without coupling to PortalSystem internals.
+export type PlayerStat = {
+  score: number;
+  health: number;
+  goalsCollected: number;
+  goalsTotal: number;
+  dead: boolean;
+};
+export function getPlayerStats(g: Globals): Map<string, PlayerStat> {
+  let m = g.playerStats as Map<string, PlayerStat> | undefined;
+  if (!m) { m = new Map(); g.playerStats = m; }
+  return m;
+}
 
 // Enemies use this as a cell-size for wall avoidance: a wall occupies
 // ~0.95m of a cell, so 0.5 is a reasonable "don't enter" radius.

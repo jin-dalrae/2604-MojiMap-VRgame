@@ -426,3 +426,9 @@ right now you have them operating on their loops. no one is playing an dhte emoj
 ```
 but the braodcast view shouldn't hold any ai logic, since if you were to run the broadcast view if it did, then if there were any random paths the emoji's took then it would immediatly be unsynced, becuase these things wouldn't be follwing the actual logic. these should only be broadcasted locations of each emoji item/wall, and no logic for any of them. does this make sesne?
 ```
+
+## 2026-04-15T04:10:00Z
+
+```
+is it not eaiser to just take the game player view, and have it show all fo this, but just make it liek custom logic, so a player dosen spawn, it has a different caera, and it has this hud?
+```
