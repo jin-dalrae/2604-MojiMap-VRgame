@@ -31,10 +31,18 @@ function matchesBombPhrase(text: string): boolean {
 }
 
 // Peacock mega-jump phrase: "I'm a peacock … fly". Accepts any number
-// of words between "peacock" and "fly". We strip apostrophes and
-// punctuation so "I'm" / "Im" / "I am" all parse to the same shape.
+// of words between "peacock" and "fly".
+//
+// After stripping apostrophes/punctuation, "I'm" becomes "i m" (with
+// a space). Glue it back together before matching, then accept either
+// "im a peacock" or "i am a peacock" as the opener.
 function matchesPeacockPhrase(text: string): boolean {
-  const clean = text.toLowerCase().replace(/[^a-z]+/g, " ").replace(/\s+/g, " ").trim();
+  const clean = text
+    .toLowerCase()
+    .replace(/[^a-z]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\bi m\b/g, "im")  // un-strip the apostrophe in "I'm"
+    .trim();
   return /\b(im|i am)\s+a\s+peacock\b.*\bfly\b/.test(clean);
 }
 

@@ -15,6 +15,7 @@ import {
   Object3D,
   LocomotionEnvironment,
   EnvironmentType,
+  LocomotionSystem,
   AdditiveBlending,
   setWorldPosition,
 } from "@iwsdk/core";
@@ -64,8 +65,7 @@ import {
   WOOD_HP,
   WOOD_COLOR,
   WOOD_HIT_FLASH_MS,
-  MEGA_JUMP_VY,
-  MEGA_JUMP_GRAVITY,
+  MEGA_JUMP_HEIGHT,
   MEGA_JUMP_COOLDOWN_MS,
   enemyBehavior,
   type ItemRole,
@@ -1075,9 +1075,16 @@ export class PortalSystem extends createSystem({}) {
     FX.swordHit(this.input.gamepads.left); // whoosh
   }
 
-  // 🪶 Mega jump — launch the XROrigin straight up, let manual gravity
-  // bring it back down to the pre-jump y. Gated on hasMegaJump (the
-  // feather pickup grants the ability for the rest of the round).
+  // 🪶 Mega jump — uses IWSDK's built-in locomotion jump engine, which
+  // already handles physics, ground detection, and fall-back-to-floor
+  // correctly. Manually writing to player.position.y was being clobbered
+  // every frame by locomotion's gravity raycast (hence the "shaking at
+  // ground level" bug).
+  //
+  // We temporarily swap jumpHeight to MEGA_JUMP_HEIGHT, call jump(),
+  // then restore on the next tick. Locomotor reads jumpHeight when the
+  // jump is *issued*, not over time, so this works even though the
+  // restore happens before the player has fully come back down.
   private megaJump() {
     if (this.isDead.peek()) return;
     if (!this.hasMegaJump.peek()) {
@@ -1086,26 +1093,32 @@ export class PortalSystem extends createSystem({}) {
     }
     const now = performance.now();
     if (now - this.megaJumpLastAt < MEGA_JUMP_COOLDOWN_MS) return;
-    if (this.megaJumpActive) return; // already mid-air
     this.megaJumpLastAt = now;
-    this.megaJumpFloorY = this.player.position.y;
-    this.megaJumpVy = MEGA_JUMP_VY;
-    this.megaJumpActive = true;
+
+    // LocomotionSystem.locomotor is private in the type defs but real
+    // at runtime; reach in via an `any` cast.
+    const loco = this.world.getSystem(LocomotionSystem) as unknown as {
+      locomotor?: { jump(): void };
+      config: { jumpHeight: { value: number; peek(): number } };
+    } | undefined;
+    if (!loco?.locomotor) {
+      console.log('[MegaJump] LocomotionSystem unavailable');
+      return;
+    }
+    const jumpHeight = loco.config.jumpHeight;
+    const original = jumpHeight.peek();
+    jumpHeight.value = MEGA_JUMP_HEIGHT;
+    loco.locomotor.jump();
+    // Restore on next macrotask so locomotor has read the boosted value.
+    setTimeout(() => { jumpHeight.value = original; }, 0);
+
     FX.megaJump(this.input.gamepads.left ?? this.input.gamepads.right);
   }
 
-  // Per-frame integration while airborne. Direct write to player.position.y
-  // — locomotion's floor detection doesn't fight this when we set position
-  // higher than the floor; it just lets us fall under our own gravity.
-  private tickMegaJump(deltaSeconds: number) {
-    if (!this.megaJumpActive) return;
-    this.player.position.y += this.megaJumpVy * deltaSeconds;
-    this.megaJumpVy -= MEGA_JUMP_GRAVITY * deltaSeconds;
-    if (this.player.position.y <= this.megaJumpFloorY && this.megaJumpVy < 0) {
-      this.player.position.y = this.megaJumpFloorY;
-      this.megaJumpVy = 0;
-      this.megaJumpActive = false;
-    }
+  // No-op kept for callers — locomotor handles the physics now. Field
+  // state retained for any future custom-physics path.
+  private tickMegaJump(_deltaSeconds: number) {
+    /* intentionally empty */
   }
 
   // Wood damage — 5 sword hits to break. Flashes red per hit (the wall

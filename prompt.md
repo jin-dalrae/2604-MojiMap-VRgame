@@ -396,3 +396,9 @@ ok this is great, now push it to vercel github railway whatever, do it as master
 ```
 ok, now can you add a feather item, and if you pick it up, you get a mega jump ability, but only when the user says "I'm a peackock, you gotta let me fly" user the feather emoji. or any phrase that begins with i'm a peacock, followd by some amount of words that contain the word fly. so I'm a peakock, watch me fly, or i'm a peacock, fly, etc.
 ```
+
+## 2026-04-15T02:50:00Z
+
+```
+its not triggering the jump action, and when i manually jump, its not jumping its just staying at ground level and shaking up and down… use IWSDK locomotor jump and fix the apostrophe stripping in the matcher.
+```

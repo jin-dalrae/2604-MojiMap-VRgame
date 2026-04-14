@@ -161,12 +161,15 @@ export const WOOD_HIT_FLASH_MS = 260;      // shared with bird-style tint flash
 // and the left controller's trigger both dispatch a swing.
 export const SWORD_SWING_MS = 300;
 
-// 🪶 Mega jump — voice phrase "I'm a peacock … fly" launches the player
-// straight up. Manual physics: initial vy then constant gravity until
-// the player returns to their pre-jump y.
-export const MEGA_JUMP_VY      = 13;   // m/s upward initial velocity (~8.5 m apex)
-export const MEGA_JUMP_GRAVITY = 9.8;  // m/s² downward
-export const MEGA_JUMP_COOLDOWN_MS = 200; // tiny debounce so a partial transcript can't double-fire
+// 🪶 Mega jump — voice phrase "I'm a peacock … fly" routes through
+// IWSDK's locomotor.jump() with a temporarily boosted jumpHeight.
+// 8 m apex feels like a real "I'm a peacock" launch without nausea.
+export const MEGA_JUMP_HEIGHT  = 8;    // meters apex
+export const MEGA_JUMP_COOLDOWN_MS = 200;
+// Legacy manual-physics fields, retained for the field types but unused
+// since locomotor handles the integration internally.
+export const MEGA_JUMP_VY      = 13;
+export const MEGA_JUMP_GRAVITY = 9.8;
 
 // 💩 Voice-triggered bomb — "poo poo doo doo" spawns one. Launched like
 // a grenade: forward-and-up throw, gravity arcs it down, lands on the
