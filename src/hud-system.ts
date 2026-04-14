@@ -80,6 +80,14 @@ export class HUDSystem extends createSystem({}) {
   private flashMat!: MeshBasicMaterial;
   private flashStartAt = 0;
 
+  // Screen shake — applied as a small damped-random roll (and tiny
+  // head bob via pitch) on the XROrigin. Kept short + small so VR
+  // doesn't nauseate the player.
+  private shakeStartAt = 0;
+  private shakeBaseZ = 0;
+  private shakeBaseX = 0;
+  private readonly SHAKE_MS = 260;
+
   init() {
     // ── Main HUD panel ───────────────────────────────────────────
     // Parented to player.head so it moves 1:1 with head tracking.
@@ -127,7 +135,17 @@ export class HUDSystem extends createSystem({}) {
     const lastDmg = GameState.lastDamageAt(this.world.globals as Record<string, unknown>);
     this.cleanupFuncs.push(
       lastDmg.subscribe((ms) => {
-        if (ms > 0) this.flashStartAt = performance.now();
+        if (ms <= 0) return;
+        const now = performance.now();
+        console.log(`[HUD] hit received — flash + shake`);
+        this.flashStartAt = now;
+        // Capture current XROrigin rotation so we can restore it post-shake
+        // without clobbering any yaw the locomotion system may have set.
+        if (this.shakeStartAt === 0) {
+          this.shakeBaseZ = this.player.rotation.z;
+          this.shakeBaseX = this.player.rotation.x;
+        }
+        this.shakeStartAt = now;
       }),
     );
   }
@@ -147,6 +165,26 @@ export class HUDSystem extends createSystem({}) {
     }
     // Peak 0.55 at t=0, fade to 0 with easing so the tail feels soft.
     this.flashMat.opacity = 0.55 * (1 - t) * (1 - t);
+  }
+
+  // Per-frame shake decay — damped random XZ roll on the XROrigin.
+  // Max amplitude ~3° roll, ~2° pitch; short enough to read as "impact"
+  // without triggering motion sickness.
+  private tickShake() {
+    if (this.shakeStartAt === 0) return;
+    const elapsed = performance.now() - this.shakeStartAt;
+    if (elapsed >= this.SHAKE_MS) {
+      this.player.rotation.z = this.shakeBaseZ;
+      this.player.rotation.x = this.shakeBaseX;
+      this.shakeStartAt = 0;
+      return;
+    }
+    const t = elapsed / this.SHAKE_MS;           // 0..1
+    const damp = (1 - t) * (1 - t);              // ease-out
+    const ampZ = 0.055 * damp;
+    const ampX = 0.035 * damp;
+    this.player.rotation.z = this.shakeBaseZ + (Math.random() - 0.5) * 2 * ampZ;
+    this.player.rotation.x = this.shakeBaseX + (Math.random() - 0.5) * 2 * ampX;
   }
 
   private initResultPanel() {
@@ -275,8 +313,9 @@ export class HUDSystem extends createSystem({}) {
   }
 
   update(_delta: number, time: number) {
-    // Red flash fades smoothly — needs per-frame updates.
+    // Red flash + screen shake both run every frame for smooth motion.
     this.tickFlash();
+    this.tickShake();
 
     // 10 Hz redraw — seconds digit is the highest-frequency thing.
     if (time - this.lastDraw < 0.1) return;

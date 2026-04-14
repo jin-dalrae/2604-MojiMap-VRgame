@@ -763,6 +763,7 @@ export class PortalSystem extends createSystem({}) {
     const next = Math.max(0, current - amount);
     this.playerHealth.value = next;
     this.lastDamageAt.value = Date.now();
+    console.log(`[Hit] -${amount} HP (${current} → ${next})`);
     FX.oof(this.input.gamepads.right ?? this.input.gamepads.left);
     if (next <= 0) this.playerDied();
   }

@@ -10,18 +10,26 @@
 import type { StatefulGamepad } from "@iwsdk/xr-input";
 
 // Lazy — don't create AudioContext until first sound. Avoids browser
-// autoplay warnings when the page loads without user gesture.
+// autoplay warnings when the page loads without user gesture. Also
+// explicitly resume() whenever the context is suspended so cues fire
+// after the user has interacted with the page (some browsers keep the
+// context suspended until a gesture even if it was created earlier).
 let audioCtx: AudioContext | null = null;
 function getCtx(): AudioContext | null {
-  if (audioCtx) return audioCtx;
-  try {
-    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!Ctx) return null;
-    audioCtx = new Ctx();
-    return audioCtx;
-  } catch {
-    return null;
+  if (!audioCtx) {
+    try {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!Ctx) return null;
+      audioCtx = new Ctx();
+    } catch {
+      return null;
+    }
   }
+  if (audioCtx.state === "suspended") {
+    // Fire-and-forget; resume is async but we don't need to wait for it.
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
 }
 
 type Waveform = "sine" | "square" | "sawtooth" | "triangle";
