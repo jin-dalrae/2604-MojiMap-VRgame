@@ -13,8 +13,9 @@ import {
   CylinderGeometry,
   MeshStandardMaterial,
   Object3D,
+  InputComponent,
 } from "@iwsdk/core";
-import { GameState } from "./game-state.js";
+import { GameState, GameActions, GUN_COOLDOWN_MS } from "./game-state.js";
 
 // Factories kept tiny on purpose — these are placeholder shapes that
 // read clearly in VR without asset loading. Swap for GLTFs later.
@@ -82,6 +83,8 @@ function makeSquirtGun(): Group {
 export class WeaponSystem extends createSystem({}) {
   private leftWeapon: Object3D | null = null;
   private rightWeapon: Object3D | null = null;
+  private lastFireAt = 0;
+  private gunEquipped = false;
 
   init() {
     const globals = this.world.globals as Record<string, unknown>;
@@ -92,8 +95,25 @@ export class WeaponSystem extends createSystem({}) {
     // this also handles "already equipped at init" (e.g. rejoining mid-round).
     this.cleanupFuncs.push(
       equippedLeft.subscribe((v) => this.syncLeft(v)),
-      equippedRight.subscribe((v) => this.syncRight(v)),
+      equippedRight.subscribe((v) => {
+        this.syncRight(v);
+        this.gunEquipped = v === 'gun';
+      }),
     );
+  }
+
+  // Trigger-to-fire: only while the squirt gun is equipped. Rate-limit by
+  // a simple cooldown so holding the trigger doesn't flood the scene.
+  update() {
+    if (!this.gunEquipped) return;
+    const gamepad = this.input.gamepads.right;
+    if (!gamepad?.getButtonDown(InputComponent.Trigger)) return;
+    const now = performance.now();
+    if (now - this.lastFireAt < GUN_COOLDOWN_MS) return;
+    this.lastFireAt = now;
+
+    const fire = GameActions.fireProjectile(this.world.globals as Record<string, unknown>);
+    fire?.();
   }
 
   private syncLeft(weapon: "sword" | null) {

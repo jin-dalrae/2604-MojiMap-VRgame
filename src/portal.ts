@@ -15,6 +15,7 @@ import {
 import { type Signal } from "@preact/signals-core";
 import {
   GameState,
+  GameActions,
   isPickup,
   isHazard,
   MAX_HEALTH,
@@ -23,6 +24,14 @@ import {
   FIRE_DPS,
   FIRE_RADIUS,
   PICKUP_RADIUS,
+  ENEMY_HP,
+  ENEMY_DAMAGE_RADIUS,
+  ENEMY_DPS,
+  ENEMY_SPEED,
+  ENEMY_KILL_POINTS,
+  SWORD_RADIUS,
+  SWORD_DAMAGE,
+  SWORD_COOLDOWN_MS,
   type ItemRole,
 } from "./game-state.js";
 
@@ -117,6 +126,11 @@ type SpawnedItem = {
   sprite: Sprite;
   role: ItemRole;
   baseSize: number;
+  // Original grid cell position — used to snap enemies back home when
+  // the round ends and they've drifted from chasing the player.
+  origin: [number, number, number];
+  hp: number;
+  nextDamageableAt: number; // ms epoch; 0 = always hittable
 };
 
 export class PortalSystem extends createSystem({}) {
@@ -126,6 +140,11 @@ export class PortalSystem extends createSystem({}) {
   private lastPosSend = 0;
   private tempPos!: Vector3;
   private tempFwd!: Vector3;
+  private tempGrip!: Vector3;
+  private tempChase!: Vector3;
+  // Cooldown gates — keeps sword from deleting enemies in a single tick
+  // by virtue of being inside their hit radius for several frames.
+  private lastSwordHitAt = 0;
   private userId: string | null = null;
 
   // Round/game state signals — shared via world.globals. PortalSystem
@@ -150,6 +169,8 @@ export class PortalSystem extends createSystem({}) {
   init() {
     this.tempPos = new Vector3();
     this.tempFwd = new Vector3();
+    this.tempGrip = new Vector3();
+    this.tempChase = new Vector3();
 
     const globals = this.world.globals as Record<string, unknown>;
     this.roundRunning  = GameState.roundRunning(globals);
@@ -159,7 +180,51 @@ export class PortalSystem extends createSystem({}) {
     this.equippedLeft  = GameState.equippedLeft(globals);
     this.equippedRight = GameState.equippedRight(globals);
 
+    // Expose damage entry-point for ProjectileSystem + any future attackers.
+    // Passing the key lets the callback do O(1) lookup + broadcast GRID_CLEAR.
+    GameActions.setDamageEnemy(globals, (key, amount) => this.damageEnemy(key, amount));
+    GameActions.setFindEnemyAt(globals, (x, y, z, r2) => this.findEnemyAt(x, y, z, r2));
+
     this.connectWS();
+  }
+
+  // Nearest enemy within squared radius, or null. Linear scan — fine
+  // for the few dozen items a round has; swap to a spatial hash if we
+  // ever push past a couple hundred.
+  private findEnemyAt(x: number, y: number, z: number, r2: number): string | null {
+    let bestKey: string | null = null;
+    let bestD2 = r2;
+    for (const [key, item] of this.spawnedEntities) {
+      if (item.role !== 'enemy') continue;
+      const dx = item.sprite.position.x - x;
+      const dy = item.sprite.position.y - y;
+      const dz = item.sprite.position.z - z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        bestKey = key;
+      }
+    }
+    return bestKey;
+  }
+
+  // Returns true if the hit killed the enemy (so callers can skip further
+  // processing against a now-gone entity).
+  private damageEnemy(key: string, amount: number): boolean {
+    const item = this.spawnedEntities.get(key);
+    if (!item || item.role !== 'enemy') return false;
+    item.hp -= amount;
+    if (item.hp <= 0) {
+      this.score.value = this.score.peek() + ENEMY_KILL_POINTS;
+      this.despawnItem(key);
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'GRID_CLEAR', key }));
+      }
+      return true;
+    }
+    // Non-lethal hit — flash opacity briefly via the flicker pipeline.
+    // (animateItems already handles this; no extra state needed.)
+    return false;
   }
 
   private connectWS() {
@@ -350,7 +415,15 @@ export class PortalSystem extends createSystem({}) {
     sprite.position.set(x, y, z);
 
     const entity = this.world.createTransformEntity(sprite);
-    this.spawnedEntities.set(key, { entity, sprite, role, baseSize });
+    this.spawnedEntities.set(key, {
+      entity,
+      sprite,
+      role,
+      baseSize,
+      origin: [x, y, z],
+      hp: role === 'enemy' ? ENEMY_HP : 0,
+      nextDamageableAt: 0,
+    });
   }
 
   private despawnItem(key: string) {
@@ -376,9 +449,10 @@ export class PortalSystem extends createSystem({}) {
       const mat = s.material as SpriteMaterial;
 
       if (!roundRunning) {
-        // Snap to neutral state so the idle view stays calm.
+        // Snap to neutral state so the idle view stays calm. Restore
+        // origin so enemies that wandered during chase return home.
         s.scale.set(item.baseSize, item.baseSize, 1);
-        s.position.y = 0.55;
+        s.position.set(item.origin[0], item.origin[1], item.origin[2]);
         mat.opacity = 1;
         continue;
       }
@@ -398,35 +472,100 @@ export class PortalSystem extends createSystem({}) {
   }
 
   // Locally-authoritative collision: each client checks its own head
-  // against the shared grid items. On pickup we broadcast GRID_CLEAR so
-  // other clients see the item vanish. No server-side validation yet —
-  // trusting clients is fine for a prototype, not a competitive game.
+  // against the shared grid items. On pickup/kill we broadcast GRID_CLEAR
+  // so other clients see the item vanish. No server-side validation —
+  // trust-the-client is fine for a prototype, not a competitive game.
   private handleCollisions(deltaSeconds: number) {
     this.player.head.getWorldPosition(this.tempPos);
 
     const pickupR2 = PICKUP_RADIUS * PICKUP_RADIUS;
     const fireR2   = FIRE_RADIUS   * FIRE_RADIUS;
+    const swordR2  = SWORD_RADIUS  * SWORD_RADIUS;
+    const enemyR2  = ENEMY_DAMAGE_RADIUS * ENEMY_DAMAGE_RADIUS;
+
+    const now = performance.now();
+    const swordEquipped = this.equippedLeft.peek() === 'sword';
+    const swordReady = swordEquipped && now >= this.lastSwordHitAt + SWORD_COOLDOWN_MS;
+    if (swordEquipped) {
+      this.player.gripSpaces.left.getWorldPosition(this.tempGrip);
+    }
+
+    let totalHealthDelta = 0; // apply once so Signal only fires one write
 
     // Snapshot keys first: despawning during Map iteration is fine, but
-    // we also want deterministic order in case multiple pickups overlap.
+    // deterministic ordering matters when several items overlap.
     for (const [key, item] of [...this.spawnedEntities]) {
-      const d2 = this.tempPos.distanceToSquared(item.sprite.position);
+      const headD2 = this.tempPos.distanceToSquared(item.sprite.position);
 
-      if (isPickup(item.role) && d2 < pickupR2) {
+      // ── Pickups (weapons, goals, powerups) ──
+      if (isPickup(item.role) && headD2 < pickupR2) {
         this.applyPickup(item.role);
         this.despawnItem(key);
-        // Tell the server so portal + broadcast + other VR peers drop it too.
         if (this.ws?.readyState === WebSocket.OPEN) {
           this.ws.send(JSON.stringify({ type: 'GRID_CLEAR', key }));
         }
         continue;
       }
 
-      if (item.role === 'obstacle-damage' && d2 < fireR2) {
-        const current = this.playerHealth.peek();
-        const next = Math.max(0, current - FIRE_DPS * deltaSeconds);
-        if (next !== current) this.playerHealth.value = next;
+      // ── Fire: damage-over-time when player stands inside ──
+      if (item.role === 'obstacle-damage' && headD2 < fireR2) {
+        totalHealthDelta -= FIRE_DPS * deltaSeconds;
       }
+
+      // ── Enemy logic ──
+      if (item.role === 'enemy') {
+        // Enemy touches player → damage over time
+        if (headD2 < enemyR2) {
+          totalHealthDelta -= ENEMY_DPS * deltaSeconds;
+        }
+        // Sword touches enemy → scheduled damage (once per cooldown)
+        if (swordReady) {
+          const gripD2 = this.tempGrip.distanceToSquared(item.sprite.position);
+          if (gripD2 < swordR2) {
+            this.lastSwordHitAt = now;
+            this.damageEnemy(key, SWORD_DAMAGE);
+            continue; // item may be gone; don't touch it again this tick
+          }
+        }
+      }
+    }
+
+    if (totalHealthDelta !== 0) {
+      const current = this.playerHealth.peek();
+      const next = Math.max(0, current + totalHealthDelta);
+      if (next !== current) {
+        this.playerHealth.value = next;
+        if (next <= 0) this.playerDied();
+      }
+    }
+  }
+
+  // Simple chase: each enemy moves toward the player head at a fixed
+  // speed, snapped to ground-plane y. Called from animateItems so it
+  // shares the same per-frame iteration.
+  private tickEnemyAI(deltaSeconds: number) {
+    this.player.head.getWorldPosition(this.tempPos);
+    const step = ENEMY_SPEED * deltaSeconds;
+    for (const item of this.spawnedEntities.values()) {
+      if (item.role !== 'enemy') continue;
+      this.tempChase.set(
+        this.tempPos.x - item.sprite.position.x,
+        0,
+        this.tempPos.z - item.sprite.position.z,
+      );
+      const dist = this.tempChase.length();
+      if (dist < 0.1) continue;
+      this.tempChase.multiplyScalar(step / dist);
+      item.sprite.position.x += this.tempChase.x;
+      item.sprite.position.z += this.tempChase.z;
+    }
+  }
+
+  private playerDied() {
+    console.log('[Round] Player died');
+    // Server will broadcast ROUND_END back, which resets everything.
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'ROUND_END', reason: 'died' }));
     }
   }
 
@@ -457,7 +596,10 @@ export class PortalSystem extends createSystem({}) {
 
     // Gameplay interactions only fire while the round is live. Gives the
     // planner time to place items before the contestant can grab them.
-    if (roundRunning) this.handleCollisions(delta);
+    if (roundRunning) {
+      this.tickEnemyAI(delta);
+      this.handleCollisions(delta);
+    }
 
     // Send VR player head position at ~10 Hz
     const now = performance.now();
