@@ -324,3 +324,15 @@ i need to make a feautre where when a user says "poo poo doo doo" it shoots out 
 ```
 its not going in front of the user, the bomb needs to be sent out in front of the user. think like a grenade. also the poo is goming randomly from the air? like it should be arcing out from the users postition from out in front of the user.
 ```
+
+## 2026-04-15T00:40:00Z
+
+```
+make it so you only get this ability if you pick up a poo item. add a poo emoji to weapons, and call it poopoodoodoo. also get rid of plant lamp music heart target and gem emoji's and now we'll have a more focused set of emoji's that we actually set interactions for.
+```
+
+## 2026-04-15T00:45:00Z
+
+```
+the poo is coming out of th backside of the user. it needs to come out of the front
+```

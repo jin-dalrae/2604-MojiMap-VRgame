@@ -247,6 +247,7 @@ export class PortalSystem extends createSystem({}) {
   private roundResult!: Signal<RoundResult | null>;
   private goalsTotal!: Signal<number>;
   private goalsCollected!: Signal<number>;
+  private bombCharges!: Signal<number>;
   private isDead!: Signal<boolean>;
   // Hazard damage cooldown — player invulnerable while `now` is
   // inside this window. Blocks spam damage and pairs with the red
@@ -298,6 +299,7 @@ export class PortalSystem extends createSystem({}) {
     this.roundResult   = GameState.roundResult(globals);
     this.goalsTotal     = GameState.goalsTotal(globals);
     this.goalsCollected = GameState.goalsCollected(globals);
+    this.bombCharges    = GameState.bombCharges(globals);
     this.isDead         = GameState.isDead(globals);
     this.roundPending   = GameState.roundPending(globals);
     this.lastDamageAt   = GameState.lastDamageAt(globals);
@@ -594,6 +596,7 @@ export class PortalSystem extends createSystem({}) {
         this.playerHealth.value = MAX_HEALTH;
         this.equippedLeft.value = null;
         this.equippedRight.value = null;
+        this.bombCharges.value = 0;
         this.isDead.value = false;
         this.roundPending.value = false;
         this.roundEndsAt.value = msg.endsAt;
@@ -1447,6 +1450,12 @@ export class PortalSystem extends createSystem({}) {
       case 'weapon-gun':
         this.equippedRight.value = 'gun';
         FX.pickupWeapon(rightPad);
+        break;
+      case 'weapon-poo':
+        // Picking up 💩 adds one bomb charge — voice/B only work if
+        // you have charges. Stackable across multiple pickups.
+        this.bombCharges.value = this.bombCharges.peek() + 1;
+        FX.pickupWeapon(rightPad ?? leftPad);
         break;
       case 'goal':
         this.score.value = this.score.peek() + GOAL_POINTS;

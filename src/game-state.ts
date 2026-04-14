@@ -9,6 +9,7 @@ import { signal, type Signal } from "@preact/signals-core";
 export type ItemRole =
   | "weapon-sword"
   | "weapon-gun"
+  | "weapon-poo"
   | "goal"
   | "powerup"
   | "obstacle-damage"
@@ -21,6 +22,7 @@ export function isPickup(role: ItemRole): boolean {
   return (
     role === "weapon-sword" ||
     role === "weapon-gun" ||
+    role === "weapon-poo" ||
     role === "goal" ||
     role === "powerup"
   );
@@ -255,6 +257,10 @@ export const GameState = {
   // ms-epoch of the last sword swing. WeaponSystem watches this to run
   // the visual slash animation on the left-hand sword.
   lastSwingAt:    (g: Globals) => getOrInit<number>(g, "lastSwingAt", 0),
+  // 💩 bomb charges — picking up a poopoodoodoo item grants one. The
+  // voice phrase and the B keyboard shortcut both decrement this;
+  // throwing fails silently if it's zero.
+  bombCharges:    (g: Globals) => getOrInit<number>(g, "bombCharges", 0),
 };
 
 // Enemies use this as a cell-size for wall avoidance: a wall occupies

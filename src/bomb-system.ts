@@ -20,6 +20,7 @@ import {
 } from "@iwsdk/core";
 import {
   GameActions,
+  GameState,
   BOMB_THROW_FWD,
   BOMB_THROW_UP,
   BOMB_GRAVITY,
@@ -93,19 +94,31 @@ export class BombSystem extends createSystem({}) {
   // the player, with initial velocity = (horizontal forward) + (upward
   // kick). Gravity applies per-frame so it arcs and lands on the floor
   // in front of wherever the player was facing.
+  //
+  // Gated on bombCharges — must have picked up a 💩 item first. Throwing
+  // consumes one charge.
   private spawnBomb() {
     const now = performance.now();
     if (now - this.lastSpawnAt < BOMB_COOLDOWN_MS) return; // spam guard
+    const globals = this.world.globals as Record<string, unknown>;
+    const charges = GameState.bombCharges(globals);
+    if (charges.peek() <= 0) {
+      console.log('[Bomb] no charges — pick up a 💩 first');
+      return;
+    }
     this.lastSpawnAt = now;
+    charges.value = charges.peek() - 1;
 
     const head = this.player.head;
     const headPos = new Vector3();
     head.getWorldPosition(headPos);
-    // Head forward direction in world space. Flatten Y so the arc is
-    // level with the ground regardless of head pitch (looking down
-    // shouldn't shoot the grenade into the floor).
+    // Head forward — IWSDK/WebXR head Object3D exposes +Z as its axis
+    // column, which points OUT THE BACK of the user, so we negate to
+    // get the looking-forward direction. Flatten Y so the arc is level
+    // with the ground regardless of head pitch.
     const forward = new Vector3();
     head.getWorldDirection(forward);
+    forward.negate();
     forward.y = 0;
     if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
     forward.normalize();
