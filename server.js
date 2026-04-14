@@ -21,11 +21,36 @@ import { createServer } from 'http';
 import { networkInterfaces } from 'os';
 import { randomUUID } from 'crypto';
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // ── Shared state ────────────────────────────────────────────
-const gridState = new Map(); // "r,c" -> { type, icon, label }
+const gridState = new Map(); // "r,c" -> { type, icon, label, role }
 const users = new Map();     // userId -> { position: {x, z, heading}, spaceId }
+
+// Round state. endsAt === 0 means no round in progress.
+// Duration is stored for reference (e.g. portals joining mid-round).
+const round = { endsAt: 0, duration: 0, timeout: null };
+
+function endRound(reason) {
+  if (!round.endsAt) return;
+  if (round.timeout) { clearTimeout(round.timeout); round.timeout = null; }
+  round.endsAt = 0;
+  round.duration = 0;
+  console.log(`[⏱] Round ended (${reason})`);
+  broadcast({ type: 'ROUND_END', reason });
+}
+
+function startRound(duration) {
+  // Clamp to the same range the portal UI allows.
+  const d = Math.max(5, Math.min(600, Math.round(duration)));
+  if (round.timeout) clearTimeout(round.timeout);
+  round.duration = d;
+  round.endsAt = Date.now() + d * 1000;
+  console.log(`[⏱] Round started (${d}s, ends at ${new Date(round.endsAt).toISOString()})`);
+  broadcast({ type: 'ROUND_START', duration: d, endsAt: round.endsAt });
+  // Server is authoritative: auto-broadcast ROUND_END when the timer fires.
+  round.timeout = setTimeout(() => endRound('timeout'), d * 1000);
+}
 
 // ── Server setup ─────────────────────────────────────────────
 const server = createServer();
@@ -48,12 +73,15 @@ wss.on('connection', (ws) => {
   const short = userId.slice(0, 8);
   console.log(`[+] Client connected ${short} (${wss.clients.size} total)`);
 
-  // Initial state dump: grid + everyone currently present.
+  // Initial state dump: grid + presence + any in-progress round.
+  // `round.endsAt` is absolute ms epoch so new clients sync their countdown
+  // to the same wall-clock moment other clients are already watching.
   ws.send(JSON.stringify({
     type: 'WELCOME',
     userId,
     grid: Object.fromEntries(gridState),
     users: Object.fromEntries(users),
+    round: round.endsAt ? { endsAt: round.endsAt, duration: round.duration } : null,
   }));
 
   ws.on('message', (raw) => {
@@ -74,6 +102,14 @@ wss.on('connection', (ws) => {
       case 'GRID_CLEAR_ALL':
         gridState.clear();
         broadcast({ type: 'GRID_CLEAR_ALL' });
+        break;
+
+      case 'ROUND_START':
+        startRound(msg.duration);
+        break;
+
+      case 'ROUND_END':
+        endRound(msg.reason || 'host-stopped');
         break;
 
       case 'PLAYER_POSITION': {

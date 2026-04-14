@@ -61,6 +61,84 @@
 
       .header-actions { display: flex; gap: 6px; align-items: center; }
 
+      /* ── Round controls (header center) ── */
+      .round-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+        justify-content: center;
+      }
+      .round-controls label {
+        font-size: 10px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .round-controls input[type="number"] {
+        width: 54px;
+        padding: 4px 6px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 6px;
+        font-size: 11px;
+        font-family: inherit;
+        text-align: right;
+      }
+      .round-controls input[type="number"]:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .timer-display {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text);
+        letter-spacing: 1px;
+        min-width: 80px;
+        text-align: center;
+        padding: 2px 10px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        transition: color 0.2s, border-color 0.2s;
+      }
+      .timer-display.running { color: #10b981; border-color: #10b981; }
+      .timer-display.warning { color: #f59e0b; border-color: #f59e0b; }
+      .timer-display.critical { color: #ef4444; border-color: #ef4444; animation: pulse 0.6s infinite; }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
+      .btn-primary.running {
+        background: #ef4444;
+      }
+      .btn-primary.running:hover { background: #dc2626; }
+
+      /* ── Role-based cell tinting ── */
+      .cell[data-role="weapon-sword"],
+      .cell[data-role="weapon-gun"],
+      .cell[data-role="goal"],
+      .cell[data-role="powerup"] {
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35), 0 0 6px rgba(255,255,255,0.15);
+      }
+      .cell[data-role="obstacle-damage"],
+      .cell[data-role="enemy"] {
+        box-shadow: inset 0 0 0 1px rgba(239,68,68,0.55), 0 0 6px rgba(239,68,68,0.25);
+      }
+      .item[data-role="weapon-sword"],
+      .item[data-role="weapon-gun"],
+      .item[data-role="goal"],
+      .item[data-role="powerup"] {
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3);
+      }
+      .item[data-role="obstacle-damage"],
+      .item[data-role="enemy"] {
+        box-shadow: inset 0 0 0 1px rgba(239,68,68,0.45);
+      }
+
       .btn {
         padding: 5px 11px;
         border: none;
@@ -363,9 +441,17 @@
   <body>
     <header>
       <h1>⬡ XR Grid Planner</h1>
+      <div class="round-controls">
+        <label>
+          Round
+          <input type="number" id="round-duration" min="5" max="600" step="5" value="30" />
+          s
+        </label>
+        <div class="timer-display" id="timer-display">00:30</div>
+      </div>
       <div class="header-actions">
         <button class="btn btn-ghost" id="clear-btn">Clear</button>
-        <button class="btn btn-primary" id="transmit-btn">Transmit</button>
+        <button class="btn btn-primary" id="start-round-btn">Start Round</button>
       </div>
     </header>
 
@@ -384,45 +470,52 @@
 
     <!-- Mobile palette strip (bottom) -->
     <div class="palette" id="palette-mobile">
-      <span class="palette-section">Prims</span>
+      <span class="palette-section">Weapons</span>
+      <div class="item" data-type="sword"    data-icon="🗡️" data-label="Sword">    <span class="item-icon">🗡️</span><span class="item-label">Sword</span></div>
+      <div class="item" data-type="gun"      data-icon="🔫" data-label="Squirt">   <span class="item-icon">🔫</span><span class="item-label">Squirt</span></div>
+      <div class="palette-divider"></div>
+      <span class="palette-section">Goals</span>
+      <div class="item" data-type="star"     data-icon="⭐" data-label="Star">     <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
+      <div class="item" data-type="gem"      data-icon="💎" data-label="Gem">      <span class="item-icon">💎</span><span class="item-label">Gem</span></div>
+      <div class="item" data-type="target"   data-icon="🎯" data-label="Target">   <span class="item-icon">🎯</span><span class="item-label">Target</span></div>
+      <div class="item" data-type="heart"    data-icon="❤️" data-label="Heart">    <span class="item-icon">❤️</span><span class="item-label">Heart</span></div>
+      <div class="palette-divider"></div>
+      <span class="palette-section">Hazards</span>
+      <div class="item" data-type="fire"     data-icon="🔥" data-label="Fire">     <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
+      <div class="item" data-type="robot"    data-icon="🤖" data-label="Robot">    <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+      <div class="item" data-type="ghost"    data-icon="👻" data-label="Ghost">    <span class="item-icon">👻</span><span class="item-label">Ghost</span></div>
+      <div class="palette-divider"></div>
+      <span class="palette-section">Decor</span>
       <div class="item" data-type="cube"     data-icon="🟦" data-label="Cube">     <span class="item-icon">🟦</span><span class="item-label">Cube</span></div>
-      <div class="item" data-type="sphere"   data-icon="🔵" data-label="Sphere">   <span class="item-icon">🔵</span><span class="item-label">Sphere</span></div>
-      <div class="item" data-type="cylinder" data-icon="🟤" data-label="Cylinder"> <span class="item-icon">🟤</span><span class="item-label">Cylinder</span></div>
-      <div class="palette-divider"></div>
-      <span class="palette-section">Furn.</span>
-      <div class="item" data-type="chair"  data-icon="🪑" data-label="Chair">  <span class="item-icon">🪑</span><span class="item-label">Chair</span></div>
-      <div class="item" data-type="table"  data-icon="🪵" data-label="Table">  <span class="item-icon">🪵</span><span class="item-label">Table</span></div>
-      <div class="item" data-type="lamp"   data-icon="💡" data-label="Lamp">   <span class="item-icon">💡</span><span class="item-label">Lamp</span></div>
-      <div class="item" data-type="plant"  data-icon="🌿" data-label="Plant">  <span class="item-icon">🌿</span><span class="item-label">Plant</span></div>
-      <div class="item" data-type="screen" data-icon="🖥️" data-label="Screen"> <span class="item-icon">🖥️</span><span class="item-label">Screen</span></div>
-      <div class="palette-divider"></div>
-      <span class="palette-section">FX</span>
-      <div class="item" data-type="fire"   data-icon="🔥" data-label="Fire">   <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
-      <div class="item" data-type="portal" data-icon="🌀" data-label="Portal"> <span class="item-icon">🌀</span><span class="item-label">Portal</span></div>
-      <div class="item" data-type="star"   data-icon="⭐" data-label="Star">   <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
-      <div class="item" data-type="music"  data-icon="🎵" data-label="Music">  <span class="item-icon">🎵</span><span class="item-label">Music</span></div>
-      <div class="item" data-type="robot"  data-icon="🤖" data-label="Robot">  <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+      <div class="item" data-type="chair"    data-icon="🪑" data-label="Chair">    <span class="item-icon">🪑</span><span class="item-label">Chair</span></div>
+      <div class="item" data-type="plant"    data-icon="🌿" data-label="Plant">    <span class="item-icon">🌿</span><span class="item-label">Plant</span></div>
+      <div class="item" data-type="lamp"     data-icon="💡" data-label="Lamp">     <span class="item-icon">💡</span><span class="item-label">Lamp</span></div>
+      <div class="item" data-type="portal"   data-icon="🌀" data-label="Portal">   <span class="item-icon">🌀</span><span class="item-label">Portal</span></div>
+      <div class="item" data-type="music"    data-icon="🎵" data-label="Music">    <span class="item-icon">🎵</span><span class="item-label">Music</span></div>
     </div>
 
     <!-- Desktop layout wrapper -->
     <div class="content-wrap">
       <div class="palette" id="palette-desktop">
-        <div class="palette-section">Primitives</div>
+        <div class="palette-section">Weapons</div>
+        <div class="item" data-type="sword"    data-icon="🗡️" data-label="Sword">    <span class="item-icon">🗡️</span><span class="item-label">Sword</span></div>
+        <div class="item" data-type="gun"      data-icon="🔫" data-label="Squirt">   <span class="item-icon">🔫</span><span class="item-label">Squirt</span></div>
+        <div class="palette-section">Goals</div>
+        <div class="item" data-type="star"     data-icon="⭐" data-label="Star">     <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
+        <div class="item" data-type="gem"      data-icon="💎" data-label="Gem">      <span class="item-icon">💎</span><span class="item-label">Gem</span></div>
+        <div class="item" data-type="target"   data-icon="🎯" data-label="Target">   <span class="item-icon">🎯</span><span class="item-label">Target</span></div>
+        <div class="item" data-type="heart"    data-icon="❤️" data-label="Heart">    <span class="item-icon">❤️</span><span class="item-label">Heart</span></div>
+        <div class="palette-section">Hazards</div>
+        <div class="item" data-type="fire"     data-icon="🔥" data-label="Fire">     <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
+        <div class="item" data-type="robot"    data-icon="🤖" data-label="Robot">    <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+        <div class="item" data-type="ghost"    data-icon="👻" data-label="Ghost">    <span class="item-icon">👻</span><span class="item-label">Ghost</span></div>
+        <div class="palette-section">Decor</div>
         <div class="item" data-type="cube"     data-icon="🟦" data-label="Cube">     <span class="item-icon">🟦</span><span class="item-label">Cube</span></div>
-        <div class="item" data-type="sphere"   data-icon="🔵" data-label="Sphere">   <span class="item-icon">🔵</span><span class="item-label">Sphere</span></div>
-        <div class="item" data-type="cylinder" data-icon="🟤" data-label="Cylinder"> <span class="item-icon">🟤</span><span class="item-label">Cylinder</span></div>
-        <div class="palette-section">Furniture</div>
-        <div class="item" data-type="chair"  data-icon="🪑" data-label="Chair">  <span class="item-icon">🪑</span><span class="item-label">Chair</span></div>
-        <div class="item" data-type="table"  data-icon="🪵" data-label="Table">  <span class="item-icon">🪵</span><span class="item-label">Table</span></div>
-        <div class="item" data-type="lamp"   data-icon="💡" data-label="Lamp">   <span class="item-icon">💡</span><span class="item-label">Lamp</span></div>
-        <div class="item" data-type="plant"  data-icon="🌿" data-label="Plant">  <span class="item-icon">🌿</span><span class="item-label">Plant</span></div>
-        <div class="item" data-type="screen" data-icon="🖥️" data-label="Screen"> <span class="item-icon">🖥️</span><span class="item-label">Screen</span></div>
-        <div class="palette-section">Effects</div>
-        <div class="item" data-type="fire"   data-icon="🔥" data-label="Fire">   <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
-        <div class="item" data-type="portal" data-icon="🌀" data-label="Portal"> <span class="item-icon">🌀</span><span class="item-label">Portal</span></div>
-        <div class="item" data-type="star"   data-icon="⭐" data-label="Star">   <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
-        <div class="item" data-type="music"  data-icon="🎵" data-label="Music">  <span class="item-icon">🎵</span><span class="item-label">Music</span></div>
-        <div class="item" data-type="robot"  data-icon="🤖" data-label="Robot">  <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+        <div class="item" data-type="chair"    data-icon="🪑" data-label="Chair">    <span class="item-icon">🪑</span><span class="item-label">Chair</span></div>
+        <div class="item" data-type="plant"    data-icon="🌿" data-label="Plant">    <span class="item-icon">🌿</span><span class="item-label">Plant</span></div>
+        <div class="item" data-type="lamp"     data-icon="💡" data-label="Lamp">     <span class="item-icon">💡</span><span class="item-label">Lamp</span></div>
+        <div class="item" data-type="portal"   data-icon="🌀" data-label="Portal">   <span class="item-icon">🌀</span><span class="item-label">Portal</span></div>
+        <div class="item" data-type="music"    data-icon="🎵" data-label="Music">    <span class="item-icon">🎵</span><span class="item-label">Music</span></div>
       </div>
 
       <div class="grid-area" id="grid-area-desktop">
@@ -448,8 +541,28 @@
     <script>
       const COLS = 20, ROWS = 10;
 
+      // ── Role inference ────────────────────────────────────────
+      // Drives VR behavior: pickups get halos + equipment grant, hazards
+      // damage player, enemies have AI + are killable, decor is inert.
+      const ROLE_BY_ICON = {
+        '🗡️': 'weapon-sword',
+        '🔫': 'weapon-gun',
+        '⭐': 'goal', '💎': 'goal', '🎯': 'goal',
+        '❤️': 'powerup',
+        '🔥': 'obstacle-damage',
+        '🤖': 'enemy', '👻': 'enemy', '💀': 'enemy',
+        // everything else → 'decor' (falls through)
+      };
+      function roleFor(icon) { return ROLE_BY_ICON[icon] || 'decor'; }
+
+      // Stamp role on each palette item's DOM so CSS tinting works.
+      document.querySelectorAll('.item[data-icon]').forEach(el => {
+        el.dataset.role = roleFor(el.dataset.icon);
+      });
+
       // ── WebSocket sync ───────────────────────────────────────
-      const WS_URL = `ws://${location.hostname}:3001`;
+      const _isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      const WS_URL = _isLocal ? `ws://${location.hostname}:3001` : `wss://ar-app-ws-production.up.railway.app`;
       let ws = null;
       let wsReady = false;
 
@@ -492,6 +605,15 @@
                 state.set(key, item);
               }
               syncGrids();
+              // Adopt any in-progress round from the server snapshot.
+              if (msg.round && msg.round.endsAt > Date.now()) {
+                roundEndsAt = msg.round.endsAt;
+                setRoundRunning(true);
+                startTick();
+              } else {
+                setRoundRunning(false);
+              }
+              renderTimer();
               // Clear any stale markers then rebuild from the snapshot.
               for (const userId of [...players.keys()]) removePlayer(userId);
               for (const [userId, user] of Object.entries(msg.users || {})) {
@@ -524,6 +646,22 @@
 
             case 'PLAYER_POSITION':
               updatePlayer(msg.userId, msg.position);
+              break;
+
+            case 'ROUND_START':
+              // Server sends absolute `endsAt` so all clients stay synced
+              // regardless of clock skew between portal tabs.
+              roundEndsAt = msg.endsAt;
+              setRoundRunning(true);
+              startTick();
+              renderTimer();
+              break;
+
+            case 'ROUND_END':
+              roundEndsAt = 0;
+              setRoundRunning(false);
+              stopTick();
+              renderTimer();
               break;
           }
         };
@@ -678,11 +816,13 @@
             const item = state.get(key);
             cell.classList.remove('occupied');
             cell.removeAttribute('draggable');
+            delete cell.dataset.role;
             if (cell._dragStart) { cell.removeEventListener('dragstart', cell._dragStart); cell._dragStart = null; }
             if (cell._dragEnd)   { cell.removeEventListener('dragend',   cell._dragEnd);   cell._dragEnd = null; }
             cell.innerHTML = '';
             if (item) {
               cell.classList.add('occupied');
+              if (item.role) cell.dataset.role = item.role;
               const icon = document.createElement('span');
               icon.textContent = item.icon;
               icon.title = item.label;
@@ -784,9 +924,11 @@
 
       // ── State helpers (optimistic + server sync) ─────────────
       function placeItem(key, item) {
-        state.set(key, item);
+        // Always attach a role so VR can branch behavior without parsing icons.
+        const withRole = item.role ? item : { ...item, role: roleFor(item.icon) };
+        state.set(key, withRole);
         syncGrids();
-        wsSend({ type: 'GRID_PLACE', key, item });
+        wsSend({ type: 'GRID_PLACE', key, item: withRole });
       }
 
       function clearCell(key) {
@@ -810,17 +952,71 @@
         wsSend({ type: 'GRID_CLEAR_ALL' });
       });
 
-      // ── Transmit (force re-sync) ──────────────────────────────
-      document.getElementById('transmit-btn').addEventListener('click', () => {
-        // Re-send all placed items to server (useful if VR reconnects)
-        for (const [key, item] of state.entries()) {
-          wsSend({ type: 'GRID_PLACE', key, item });
+      // ── Round timer ──────────────────────────────────────────
+      // Authoritative timing lives on the server; portal displays a
+      // client-side countdown derived from the server's `endsAt` (ms epoch).
+      // Local tick is just for the visual clock — it never writes state.
+      const startBtn     = document.getElementById('start-round-btn');
+      const durationEl   = document.getElementById('round-duration');
+      const timerDisplay = document.getElementById('timer-display');
+
+      let roundEndsAt = 0;          // ms epoch; 0 when not running
+      let tickHandle  = null;
+
+      function fmtSeconds(s) {
+        const safe = Math.max(0, Math.ceil(s));
+        const mm = String(Math.floor(safe / 60)).padStart(2, '0');
+        const ss = String(safe % 60).padStart(2, '0');
+        return `${mm}:${ss}`;
+      }
+
+      function renderTimer() {
+        const remaining = roundEndsAt
+          ? Math.max(0, (roundEndsAt - Date.now()) / 1000)
+          : parseInt(durationEl.value, 10) || 0;
+        timerDisplay.textContent = fmtSeconds(remaining);
+
+        timerDisplay.classList.remove('running', 'warning', 'critical');
+        if (roundEndsAt) {
+          if (remaining <= 5)       timerDisplay.classList.add('critical');
+          else if (remaining <= 10) timerDisplay.classList.add('warning');
+          else                      timerDisplay.classList.add('running');
         }
-        const btn = document.getElementById('transmit-btn');
-        btn.textContent = '✓ Synced!';
-        btn.style.background = '#10b981';
-        setTimeout(() => { btn.textContent = 'Transmit'; btn.style.background = ''; }, 1500);
+
+        if (roundEndsAt && remaining <= 0) {
+          // Server will broadcast ROUND_END; stop updating locally.
+          stopTick();
+        }
+      }
+
+      function startTick() {
+        if (tickHandle) return;
+        tickHandle = setInterval(renderTimer, 250);
+      }
+      function stopTick() {
+        if (tickHandle) { clearInterval(tickHandle); tickHandle = null; }
+      }
+
+      function setRoundRunning(running) {
+        startBtn.textContent = running ? 'End Round' : 'Start Round';
+        startBtn.classList.toggle('running', running);
+        durationEl.disabled = running;
+      }
+
+      durationEl.addEventListener('input', () => { if (!roundEndsAt) renderTimer(); });
+
+      startBtn.addEventListener('click', () => {
+        if (roundEndsAt) {
+          // Currently running → ask server to end.
+          wsSend({ type: 'ROUND_END', reason: 'host-stopped' });
+        } else {
+          const duration = Math.max(5, Math.min(600, parseInt(durationEl.value, 10) || 30));
+          durationEl.value = duration;
+          wsSend({ type: 'ROUND_START', duration });
+        }
       });
+
+      renderTimer();
 
       syncGrids();
     </script>
