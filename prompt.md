@@ -366,3 +366,9 @@ bombs can also blow up brown walls. make birds worth hte most points of everythi
 ```
 the first couple times i use my voice to say poopoodoodoo it works really well, then after that it stops workign with voice, whats up with that.
 ```
+
+## 2026-04-15T01:35:00Z
+
+```
+we can use a really bad model from openai to do the real time voice recognition, what we have so far doesn't work well enough. path a, put this in the vercel env area [REDACTED OPENAI KEY] and put it somewhere local with a git ignore. sorry, it can also be put in the railway, lets do b if it isn't too hard.
+```

@@ -22,6 +22,7 @@ import { networkInterfaces } from 'os';
 import { randomUUID } from 'crypto';
 
 const PORT = process.env.PORT || 3001;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // ── Shared state ────────────────────────────────────────────
 const gridState = new Map(); // "r,c" -> { type, icon, label, role }
@@ -96,6 +97,66 @@ function startRound(duration) {
 // ── Server setup ─────────────────────────────────────────────
 const server = createServer();
 const wss = new WebSocketServer({ server });
+
+// HTTP routes — currently only used to mint ephemeral tokens for the
+// browser to open a Realtime API session. CORS is wide-open since the
+// only sensitive thing this endpoint can do is consume the (minimal,
+// rate-limited) Realtime quota; it never echoes the OPENAI_API_KEY.
+server.on('request', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  if (req.url === '/api/realtime-token' && req.method === 'POST') {
+    if (!OPENAI_API_KEY) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'OPENAI_API_KEY not set on server' }));
+      return;
+    }
+    try {
+      // Transcription-only session: cheapest realtime path. We don't
+      // want speech-to-speech, just keyword spotting.
+      const sessionConfig = {
+        session: {
+          type: 'transcription',
+          input_audio_transcription: { model: 'gpt-4o-mini-transcribe' },
+          // VAD trims silence so we get faster, more accurate transcripts.
+          turn_detection: {
+            type: 'server_vad',
+            threshold: 0.5,
+            prefix_padding_ms: 200,
+            silence_duration_ms: 250,
+          },
+        },
+      };
+      const upstream = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(sessionConfig),
+      });
+      const text = await upstream.text();
+      res.writeHead(upstream.status, { 'Content-Type': 'application/json' });
+      res.end(text);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: String(e?.message ?? e) }));
+    }
+    return;
+  }
+
+  if (req.url === '/api/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, hasOpenAIKey: !!OPENAI_API_KEY }));
+    return;
+  }
+
+  res.writeHead(404, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'Not found' }));
+});
 
 function broadcast(msg, exclude = null) {
   const str = JSON.stringify(msg);
