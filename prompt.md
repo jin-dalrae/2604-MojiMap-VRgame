@@ -438,3 +438,69 @@ is it not eaiser to just take the game player view, and have it show all fo this
 ```
 you didn't do what i said. i mean use a copy of this: like instead, like completely rip out everything in broadcast view, and make it just another player view, but customized, so it doens't add a player, it has a different camera, and it has the hud you created.
 ```
+
+## 2026-04-15T05:10:00Z
+
+```
+no bitch, the code needs to be more like this: [HTML showing /src/index.ts script load]... just with your hud, not activiting it as a person, don't allow controlling a caracter, chanign the camera angle,
+```
+
+## 2026-04-15T05:30:00Z
+
+```
+look at the differences. you arn't copying the main play state. look how much missing information there is. can you reload everytihng an dmake sure that its not just a caching thing? waht do  you htink is causing this? there is such an empty state of what you are making, where are all the eagles, and enemies.
+```
+
+## 2026-04-15T05:45:00Z
+
+```
+you know yo uare using the same thing as the main page if you can see the owrds enter xr at the top. because that is the state the game uses. and that view loads all the eagles and shows them all moving real time and walls etc. you should just be using the acrtual game player view. come up with a plan
+```
+
+## 2026-04-15T05:55:00Z
+
+```
+yes
+```
+
+## 2026-04-15T06:05:00Z
+
+```
+questipm. do different players playing hte same game get different sprite movement form teh enemiew that have random effect?
+```
+
+## 2026-04-15T06:15:00Z
+
+```
+10hz seems so slow, what does call of duty mobile use?
+```
+
+## 2026-04-15T06:25:00Z
+
+```
+lets do 20Hz, and how hard would doing all of this be?
+```
+
+## 2026-04-15T06:35:00Z
+
+```
+will it feel a lot less snappy?
+```
+
+## 2026-04-15T06:45:00Z
+
+```
+ok, for a separate fix, is there a way to stream the video form the headset to a broadcast view on that broadcast url?
+```
+
+## 2026-04-15T06:55:00Z
+
+```
+which has the best ux, and gets a stream, and works when this is hostsed and not local, and is cheap.
+```
+
+## 2026-04-15T07:05:00Z
+
+```
+make an md in a devlog about this, and teh other thing we discussed about syncign the onlnie state like call of duty mobile. i wnat to be able to revisit these options later. push everything we have to the master site, teh railway the vercel the github.
+```
