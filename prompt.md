@@ -420,3 +420,9 @@ but right now the sprights arent matching i think you aren't making actual locat
 ```
 right now you have them operating on their loops. no one is playing an dhte emoji's are follwign their game logic.
 ```
+
+## 2026-04-15T03:55:00Z
+
+```
+but the braodcast view shouldn't hold any ai logic, since if you were to run the broadcast view if it did, then if there were any random paths the emoji's took then it would immediatly be unsynced, becuase these things wouldn't be follwing the actual logic. these should only be broadcasted locations of each emoji item/wall, and no logic for any of them. does this make sesne?
+```

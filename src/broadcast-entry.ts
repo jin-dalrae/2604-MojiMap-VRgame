@@ -36,19 +36,7 @@ import {
   Object3D,
 } from "@iwsdk/core";
 import {
-  enemyStats,
-  enemyBehavior,
-  BOARD_HALF_W,
-  BOARD_HALF_D,
-  BOARD_MIN_DIM,
-  WALL_CELL_HALF,
   BIRD_FLIGHT_HEIGHT,
-  BIRD_SPEED,
-  BIRD_FLAP_AMP,
-  BIRD_FLAP_FREQ,
-  BIRD_DRIFT_AMP,
-  BIRD_DRIFT_FREQ,
-  BIRD_TURN_P_PER_SEC,
   type ItemRole,
 } from "./game-state.js";
 
@@ -229,23 +217,16 @@ async function init() {
   }>();
 
   // ── Item rendering ─────────────────────────────────────────
-  // SpawnedItem mirrors portal.ts but trimmed to just the visual
-  // state — combat/cooldown fields aren't needed since we don't
-  // process hits on the broadcast.
+  // Pure renderer — no AI, no per-item state beyond what's needed to
+  // place / dispose / react to round transitions and incoming
+  // ITEM_STATES messages from the authoritative VR client.
   type SpawnedItem = {
     object3D: Sprite | Mesh;
     kind: 'sprite' | 'wall';
     role: ItemRole;
     type: string;
     origin: [number, number, number];
-    hp: number;
-    // AI state used for animation only
-    heading: number;
-    radius: number;
-    omega: number;
-    phase: number;
-    // Chair beacon (separately disposed)
-    extra?: Mesh;
+    extra?: Mesh; // chair beacon (separately disposed)
   };
   const spawnedItems = new Map<string, SpawnedItem>();
 
@@ -271,29 +252,18 @@ async function init() {
       world.createTransformEntity(wall);
       const rec: SpawnedItem = {
         object3D: wall, kind: 'wall', role, type, origin: [x, y, z],
-        hp: 0, heading: 0, radius: 0, omega: 0, phase: 0,
       };
       spawnedItems.set(key, rec);
       setWallState(rec, roundRunning);
       return;
     }
 
-    // Sprites with per-variant init.
+    // Sprites — start at origin (or BIRD_FLIGHT_HEIGHT for birds so
+    // they aren't sitting on the floor before the first ITEM_STATES
+    // arrives).
     const sprite = makeEmojiSprite(item.icon, 1.1);
     sprite.position.set(x, y, z);
-
-    let heading = 0, phase = 0, radius = 0, omega = 0;
-    if (type === 'robot') {
-      heading = Math.random() * Math.PI * 2;
-    } else if (type === 'skull') {
-      radius = 1 + Math.random() * (BOARD_MIN_DIM - 1);
-      omega = (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.8);
-      phase = Math.random() * Math.PI * 2;
-    } else if (role === 'bird') {
-      heading = Math.random() * Math.PI * 2;
-      phase = Math.random() * Math.PI * 2;
-      sprite.position.y = BIRD_FLIGHT_HEIGHT;
-    }
+    if (role === 'bird') sprite.position.y = BIRD_FLIGHT_HEIGHT;
 
     world.createTransformEntity(sprite);
 
@@ -312,8 +282,7 @@ async function init() {
     }
 
     spawnedItems.set(key, {
-      object3D: sprite, kind: 'sprite', role, type, origin: [x, y, z],
-      hp: 0, heading, radius, omega, phase, extra,
+      object3D: sprite, kind: 'sprite', role, type, origin: [x, y, z], extra,
     });
   }
 
@@ -353,136 +322,26 @@ async function init() {
   }
 
   // ── Round state ────────────────────────────────────────────
+  // Broadcast is a pure passive renderer — no AI, no random motion.
+  // Item positions only update when an authoritative VR client sends
+  // ITEM_STATES. Anything else (round timing, scores, walls) comes
+  // straight off the existing WebSocket message stream.
   let roundRunning = false;
   let roundEndsAt = 0;
-  // When a VR client recently sent authoritative item positions, skip
-  // local AI entirely — the broadcast becomes a passive renderer of
-  // the VR client's authoritative state. Falls back to local AI if no
-  // states arrive for AUTH_TIMEOUT ms (e.g. nobody in VR).
-  let lastAuthAt = 0;
-  const AUTH_TIMEOUT_MS = 1500;
   function setRoundRunning(v: boolean) {
     if (roundRunning === v) return;
     roundRunning = v;
+    // Walls flatten / pop based on round state — that's the only
+    // animation broadcast applies on its own. Item positions are
+    // entirely driven by ITEM_STATES messages.
     for (const it of spawnedItems.values()) {
       if (it.kind === 'wall') setWallState(it, v);
     }
-    // Round just ended: snap dynamic items back to their origin so
-    // the spectator view doesn't show enemies frozen at random map
-    // positions until the next round starts.
-    if (!v) snapDynamicItemsHome();
   }
 
-  function snapDynamicItemsHome() {
-    for (const it of spawnedItems.values()) {
-      if (it.kind !== 'sprite') continue;
-      if (it.role !== 'enemy' && it.role !== 'bird') continue;
-      it.object3D.position.set(it.origin[0], it.origin[1], it.origin[2]);
-      // Reset bird visual tweaks (upside-down rotation) so the next
-      // round opens with a clean slate.
-      if (it.role === 'bird') {
-        const mat = (it.object3D as Sprite).material as SpriteMaterial;
-        mat.rotation = 0;
-      }
-    }
-  }
-
-  // ── AI tick (mirrors portal.ts behavior) ───────────────────
-  // Two suppression conditions, in order:
-  //   1. Round isn't running — VR keeps enemies static between rounds,
-  //      so broadcast does the same. Avoids a stream of motion when
-  //      nobody's playing.
-  //   2. A VR client recently sent authoritative ITEM_STATES — defer
-  //      to VR's positions instead of inventing our own.
-  const tempVec = new Vector3();
-  function tickEnemyAI(deltaSeconds: number, time: number) {
-    if (!roundRunning) return;
-    if (performance.now() - lastAuthAt < AUTH_TIMEOUT_MS) return;
-    // Live targets — mirror VR's logic. Players who are dead are filtered.
-    const targets: { x: number; z: number }[] = [];
-    for (const [uid, marker] of players) {
-      const stats = playerStats.get(uid);
-      if (stats?.dead) continue;
-      targets.push({ x: marker.root.position.x, z: marker.root.position.z });
-    }
-
-    // Walls (for robot collision)
-    const walls: { x: number; z: number }[] = [];
-    for (const it of spawnedItems.values()) {
-      if (it.kind === 'wall') walls.push({ x: it.origin[0], z: it.origin[2] });
-    }
-    const blockR = WALL_CELL_HALF + 0.18;
-    const hitsWall = (x: number, z: number) => {
-      for (const w of walls) {
-        if (Math.abs(x - w.x) < blockR && Math.abs(z - w.z) < blockR) return true;
-      }
-      return false;
-    };
-
-    for (const it of spawnedItems.values()) {
-      if (it.role === 'bird') {
-        tickBird(it, deltaSeconds, time);
-        continue;
-      }
-      if (it.role !== 'enemy') continue;
-      const stats = enemyStats(it.type);
-      const pos = it.object3D.position;
-
-      if (it.type === 'skull') {
-        const angle = it.phase + time * it.omega;
-        pos.x = it.origin[0] + it.radius * Math.cos(angle);
-        pos.z = it.origin[2] + it.radius * Math.sin(angle);
-      } else if (it.type === 'robot') {
-        const step = stats.speed * deltaSeconds;
-        const nx = pos.x + Math.cos(it.heading) * step;
-        const nz = pos.z + Math.sin(it.heading) * step;
-        const oob = nx < -BOARD_HALF_W || nx > BOARD_HALF_W || nz < -BOARD_HALF_D || nz > BOARD_HALF_D;
-        if (oob || hitsWall(nx, nz)) it.heading = Math.random() * Math.PI * 2;
-        else { pos.x = nx; pos.z = nz; }
-      } else {
-        // ghost / generic chase
-        let target = targets[0];
-        if (!target) {
-          target = { x: it.origin[0], z: it.origin[2] };
-        } else {
-          let bestD2 = Infinity;
-          for (const p of targets) {
-            const dx = p.x - pos.x, dz = p.z - pos.z;
-            const d2 = dx * dx + dz * dz;
-            if (d2 < bestD2) { bestD2 = d2; target = p; }
-          }
-        }
-        const dx = target.x - pos.x, dz = target.z - pos.z;
-        const dist = Math.hypot(dx, dz);
-        if (dist > 0.05) {
-          const step = Math.min(dist, stats.speed * deltaSeconds);
-          pos.x += (dx * step) / dist;
-          pos.z += (dz * step) / dist;
-        }
-      }
-
-      if (stats.bobAmp > 0) {
-        pos.y = it.origin[1] + 0.5 + Math.sin(time * stats.bobSpeed) * stats.bobAmp;
-      }
-    }
-
-    void enemyBehavior; // imported for parity — broadcast doesn't gate on aggro
-    void tempVec;
-  }
-
-  function tickBird(it: SpawnedItem, deltaSeconds: number, time: number) {
-    const pos = it.object3D.position;
-    if (Math.random() < BIRD_TURN_P_PER_SEC * deltaSeconds) {
-      it.heading += (Math.random() - 0.5) * Math.PI;
-    }
-    it.heading += Math.sin(time * 1.7 + it.phase) * 0.3 * deltaSeconds;
-    const speed = BIRD_SPEED + Math.sin(time * 2.1 + it.phase) * 0.35;
-    pos.x += Math.cos(it.heading) * speed * deltaSeconds;
-    pos.z += Math.sin(it.heading) * speed * deltaSeconds;
-    const flap  = Math.sin(time * BIRD_FLAP_FREQ + it.phase) * BIRD_FLAP_AMP;
-    const drift = Math.sin(time * BIRD_DRIFT_FREQ + it.phase * 0.3) * BIRD_DRIFT_AMP;
-    pos.y = BIRD_FLIGHT_HEIGHT + flap + drift;
-  }
+  // No AI on the broadcast — random motion would diverge from VR
+  // immediately and the spectator view would lie about positions.
+  // Item positions only change when ITEM_STATES arrives over the WS.
 
   // ── HUD overlay ────────────────────────────────────────────
   const hud = document.getElementById('overlay')!;
@@ -579,7 +438,6 @@ async function init() {
               mat.rotation = i.birdState === 'grounded' ? Math.PI : 0;
             }
           }
-          lastAuthAt = performance.now();
           break;
         }
         case 'USER_JOIN': updatePlayerMarker(msg.userId, msg.position, false); break;
@@ -636,19 +494,14 @@ async function init() {
 
   connectWS();
 
-  // ── AI + HUD loop (rAF, runs alongside IWSDK's own render loop) ──
-  let lastTick = performance.now();
-  let lastHud = 0;
+  // ── HUD loop (5 Hz) ────────────────────────────────────────
+  // Only the HUD redraws periodically. Item motion is fully driven
+  // by ITEM_STATES messages — no per-frame interpolation here.
   function loop() {
-    const now = performance.now();
-    const delta = Math.min(0.1, (now - lastTick) / 1000);
-    lastTick = now;
-    const time = now / 1000;
-    tickEnemyAI(delta, time);
-    if (now - lastHud >= 200) { renderHUD(); lastHud = now; }
-    requestAnimationFrame(loop);
+    renderHUD();
+    setTimeout(loop, 200);
   }
-  requestAnimationFrame(loop);
+  loop();
 
   console.log('Broadcast Mode Initialized');
 }
