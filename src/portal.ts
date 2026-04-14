@@ -261,18 +261,17 @@ export class PortalSystem extends createSystem({}) {
     this.connectWS();
   }
 
-  // Nearest enemy within squared radius, or null. Linear scan — fine
-  // for the few dozen items a round has; swap to a spatial hash if we
-  // ever push past a couple hundred.
-  private findEnemyAt(x: number, y: number, z: number, r2: number): string | null {
+  // Nearest enemy within squared radius, or null. Horizontal-only — a
+  // projectile's Y drift shouldn't cost it an otherwise-clean hit given
+  // that enemies are grid-anchored at ground height.
+  private findEnemyAt(x: number, _y: number, z: number, r2: number): string | null {
     let bestKey: string | null = null;
     let bestD2 = r2;
     for (const [key, item] of this.spawnedEntities) {
       if (item.role !== 'enemy') continue;
       const dx = item.object3D.position.x - x;
-      const dy = item.object3D.position.y - y;
       const dz = item.object3D.position.z - z;
-      const d2 = dx * dx + dy * dy + dz * dz;
+      const d2 = dx * dx + dz * dz;
       if (d2 < bestD2) {
         bestD2 = d2;
         bestKey = key;
@@ -709,11 +708,20 @@ export class PortalSystem extends createSystem({}) {
     }
 
     const hittable = now >= this.damageCooldownUntil;
+    const headX = this.tempPos.x, headZ = this.tempPos.z;
+    const gripX = this.tempGrip.x, gripZ = this.tempGrip.z;
 
     // Snapshot keys first: despawning during Map iteration is fine, but
     // deterministic ordering matters when several items overlap.
     for (const [key, item] of [...this.spawnedEntities]) {
-      const headD2 = this.tempPos.distanceToSquared(item.object3D.position);
+      // Horizontal distance only — enemies sit on the grid at y≈0.55
+      // while the player's head is around y≈1.6, so 3D distance would
+      // always overshoot the hit radius. Treating the game as top-down
+      // for contact checks matches the grid-based layout.
+      const ix = item.object3D.position.x;
+      const iz = item.object3D.position.z;
+      const dhx = headX - ix, dhz = headZ - iz;
+      const headD2 = dhx * dhx + dhz * dhz;
 
       // ── Pickups (weapons, goals, powerups) ──
       if (isPickup(item.role) && headD2 < pickupR2) {
@@ -727,8 +735,8 @@ export class PortalSystem extends createSystem({}) {
 
       // ── Fire: one discrete hit per cooldown while inside ──
       if (hittable && item.role === 'obstacle-damage' && headD2 < fireR2) {
-        this.takeHit(FIRE_DPS);  // value now means per-hit damage
-        break;                    // at most one hit per tick
+        this.takeHit(FIRE_DPS);
+        break;
       }
 
       // ── Enemy: one discrete hit per cooldown on contact ──
@@ -737,14 +745,15 @@ export class PortalSystem extends createSystem({}) {
           this.takeHit(enemyStats(item.type).dps);
           break;
         }
-        // Sword touches enemy → scheduled damage (own cooldown)
+        // Sword (horizontal distance too — hand height varies).
         if (swordReady) {
-          const gripD2 = this.tempGrip.distanceToSquared(item.object3D.position);
+          const dgx = gripX - ix, dgz = gripZ - iz;
+          const gripD2 = dgx * dgx + dgz * dgz;
           if (gripD2 < swordR2) {
             this.lastSwordHitAt = now;
             const killed = this.damageEnemy(key, SWORD_DAMAGE);
             if (!killed) FX.swordHit(this.input.gamepads.left);
-            continue; // item may be gone; don't touch it again this tick
+            continue;
           }
         }
       }

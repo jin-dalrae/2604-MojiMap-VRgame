@@ -77,7 +77,7 @@ export const ENEMY_DEFAULT: EnemyStats = {
 export const ENEMY_STATS: Record<string, EnemyStats> = {
   // 🤖 Territorial guard — only chases when a player is within aggro
   //     range, otherwise walks home. Hits hard on touch.
-  robot: { hp: 4, speed: 0.8,  dps: 20, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
+  robot: { hp: 4, speed: 1.5,  dps: 20, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
   // 👻 Very slow but relentless — also the only enemy that phases
   //     through walls. Floats + weaves vertically.
   ghost: { hp: 2, speed: 0.45, dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
