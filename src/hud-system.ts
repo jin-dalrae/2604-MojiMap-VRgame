@@ -14,10 +14,12 @@ import {
   PlaneGeometry,
   MeshBasicMaterial,
   CanvasTexture,
+  DoubleSide,
 } from "@iwsdk/core";
 import {
   GameState,
   MAX_HEALTH,
+  DAMAGE_FLASH_MS,
   type RoundResult,
   type RoundEndReason,
 } from "./game-state.js";
@@ -72,6 +74,12 @@ export class HUDSystem extends createSystem({}) {
   private readyTexture!: CanvasTexture;
   private readyMesh!: Mesh;
 
+  // Full-view red flash when the player takes a hit. Just a large
+  // quad close to the near-plane; opacity is animated per frame.
+  private flashMesh!: Mesh;
+  private flashMat!: MeshBasicMaterial;
+  private flashStartAt = 0;
+
   init() {
     // ── Main HUD panel ───────────────────────────────────────────
     // Parented to player.head so it moves 1:1 with head tracking.
@@ -96,6 +104,49 @@ export class HUDSystem extends createSystem({}) {
     this.initResultPanel();
     this.initDeadPanel();
     this.initReadyPanel();
+    this.initFlashPanel();
+  }
+
+  private initFlashPanel() {
+    // Large quad close to the near plane — fills the view at z=-0.35.
+    // DoubleSide so it renders whichever way the head is facing if the
+    // plane ever flips. Transparent + depthTest off so it overlays
+    // everything.
+    this.flashMat = new MeshBasicMaterial({
+      color: 0xef4444,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      side: DoubleSide,
+    });
+    this.flashMesh = new Mesh(new PlaneGeometry(2.4, 1.8), this.flashMat);
+    this.flashMesh.renderOrder = 1100;
+    this.flashMesh.position.set(0, 0, -0.35);
+    this.player.head.add(this.flashMesh);
+
+    const lastDmg = GameState.lastDamageAt(this.world.globals as Record<string, unknown>);
+    this.cleanupFuncs.push(
+      lastDmg.subscribe((ms) => {
+        if (ms > 0) this.flashStartAt = performance.now();
+      }),
+    );
+  }
+
+  // Per-frame flash fade — runs even between 10 Hz HUD redraws so the
+  // animation looks smooth.
+  private tickFlash() {
+    if (this.flashStartAt === 0) {
+      if (this.flashMat.opacity !== 0) this.flashMat.opacity = 0;
+      return;
+    }
+    const t = (performance.now() - this.flashStartAt) / DAMAGE_FLASH_MS;
+    if (t >= 1) {
+      this.flashMat.opacity = 0;
+      this.flashStartAt = 0;
+      return;
+    }
+    // Peak 0.55 at t=0, fade to 0 with easing so the tail feels soft.
+    this.flashMat.opacity = 0.55 * (1 - t) * (1 - t);
   }
 
   private initResultPanel() {
@@ -214,16 +265,19 @@ export class HUDSystem extends createSystem({}) {
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#fbbf24";
     ctx.font = 'bold 72px "Apple Color Emoji", system-ui, sans-serif';
-    ctx.fillText("🪑 STAND HERE", W / 2, 96);
+    ctx.fillText("🪑 MOVE TO CHAIR", W / 2, 96);
 
     ctx.fillStyle = "#f4f4f5";
-    ctx.font = 'bold 44px system-ui, sans-serif';
-    ctx.fillText("Press SELECT to start round", W / 2, 180);
+    ctx.font = 'bold 40px system-ui, sans-serif';
+    ctx.fillText("Pull TRIGGER to start round", W / 2, 180);
 
     this.readyTexture.needsUpdate = true;
   }
 
   update(_delta: number, time: number) {
+    // Red flash fades smoothly — needs per-frame updates.
+    this.tickFlash();
+
     // 10 Hz redraw — seconds digit is the highest-frequency thing.
     if (time - this.lastDraw < 0.1) return;
     this.lastDraw = time;

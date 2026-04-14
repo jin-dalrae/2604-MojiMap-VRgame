@@ -40,6 +40,10 @@ import {
   SWORD_COOLDOWN_MS,
   CHAIR_READY_RADIUS,
   WALL_CELL_HALF,
+  BOARD_HALF_W,
+  BOARD_HALF_D,
+  BOARD_MIN_DIM,
+  HAZARD_COOLDOWN_MS,
   enemyBehavior,
   type ItemRole,
 } from "./game-state.js";
@@ -160,6 +164,12 @@ type SpawnedItem = {
   origin: [number, number, number];
   hp: number;
   nextDamageableAt: number; // ms epoch; 0 = always hittable
+  // Per-variant AI scratch state. Not all fields apply to every type;
+  // init per spawnItem.
+  heading: number;     // robot: current direction (radians)
+  radius: number;      // skull: circle radius around origin
+  omega: number;       // skull: angular velocity (rad/s, signed)
+  phase: number;       // skull: phase offset into circle
 };
 
 export class PortalSystem extends createSystem({}) {
@@ -191,11 +201,11 @@ export class PortalSystem extends createSystem({}) {
   private goalsTotal!: Signal<number>;
   private goalsCollected!: Signal<number>;
   private isDead!: Signal<boolean>;
-  // Skull target state — rotates periodically between live players.
-  // userId -> last-retarget timestamp; enemy-specific state lives in
-  // SpawnedItem but target-tracking needs the player list too.
-  private skullTargetUserId: string | null = null;
-  private skullRetargetAt = 0;
+  // Hazard damage cooldown — player invulnerable while `now` is
+  // inside this window. Blocks spam damage and pairs with the red
+  // flash + oof cue.
+  private damageCooldownUntil = 0;
+  private lastDamageAt!: Signal<number>;
   // spaceId is the Quest Shared Spaces XRSharedReferenceSpace UUID when available.
   // Set externally (e.g. by a future SharedSpaceSystem that requests the "shared"
   // feature and listens for the reference space UUID); forwarded on every update.
@@ -241,6 +251,7 @@ export class PortalSystem extends createSystem({}) {
     this.goalsCollected = GameState.goalsCollected(globals);
     this.isDead         = GameState.isDead(globals);
     this.roundPending   = GameState.roundPending(globals);
+    this.lastDamageAt   = GameState.lastDamageAt(globals);
 
     // Expose damage entry-point for ProjectileSystem + any future attackers.
     // Passing the key lets the callback do O(1) lookup + broadcast GRID_CLEAR.
@@ -375,8 +386,7 @@ export class PortalSystem extends createSystem({}) {
         // Teleport the player to a spawn point — deterministic by userId
         // so two players reliably get different chairs when possible.
         this.teleportToSpawn();
-        this.skullTargetUserId = null;
-        this.skullRetargetAt = 0;
+        this.damageCooldownUntil = 0;
         FX.roundStart();
         break;
       }
@@ -577,6 +587,7 @@ export class PortalSystem extends createSystem({}) {
         origin: [x, y, z],
         hp: 0,
         nextDamageableAt: 0,
+        heading: 0, radius: 0, omega: 0, phase: 0,
       });
       return;
     }
@@ -587,6 +598,23 @@ export class PortalSystem extends createSystem({}) {
     sprite.position.set(x, y, z);
 
     const entity = this.world.createTransformEntity(sprite);
+
+    // Per-variant AI initial state.
+    // Robot: random heading for its straight-line walk.
+    // Skull: random circle radius capped at the board's smaller dim,
+    //        signed angular velocity, and phase so identical spawns
+    //        don't move in lockstep.
+    let heading = 0, radius = 0, omega = 0, phase = 0;
+    if (type === 'robot') {
+      heading = Math.random() * Math.PI * 2;
+    } else if (type === 'skull') {
+      // Random distance away from origin, up to the smaller play-space
+      // dimension. User accepted skulls leaving the board — no clamp here.
+      radius = 1 + Math.random() * (BOARD_MIN_DIM - 1);
+      omega = (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.8);
+      phase = Math.random() * Math.PI * 2;
+    }
+
     this.spawnedEntities.set(key, {
       entity,
       object3D: sprite,
@@ -597,6 +625,7 @@ export class PortalSystem extends createSystem({}) {
       origin: [x, y, z],
       hp: role === 'enemy' ? enemyStats(type).hp : 0,
       nextDamageableAt: 0,
+      heading, radius, omega, phase,
     });
   }
 
@@ -679,7 +708,7 @@ export class PortalSystem extends createSystem({}) {
       this.player.gripSpaces.left.getWorldPosition(this.tempGrip);
     }
 
-    let totalHealthDelta = 0; // apply once so Signal only fires one write
+    const hittable = now >= this.damageCooldownUntil;
 
     // Snapshot keys first: despawning during Map iteration is fine, but
     // deterministic ordering matters when several items overlap.
@@ -696,18 +725,19 @@ export class PortalSystem extends createSystem({}) {
         continue;
       }
 
-      // ── Fire: damage-over-time when player stands inside ──
-      if (item.role === 'obstacle-damage' && headD2 < fireR2) {
-        totalHealthDelta -= FIRE_DPS * deltaSeconds;
+      // ── Fire: one discrete hit per cooldown while inside ──
+      if (hittable && item.role === 'obstacle-damage' && headD2 < fireR2) {
+        this.takeHit(FIRE_DPS);  // value now means per-hit damage
+        break;                    // at most one hit per tick
       }
 
-      // ── Enemy logic ──
+      // ── Enemy: one discrete hit per cooldown on contact ──
       if (item.role === 'enemy') {
-        // Enemy touches player → damage over time (per variant)
-        if (headD2 < enemyR2) {
-          totalHealthDelta -= enemyStats(item.type).dps * deltaSeconds;
+        if (hittable && headD2 < enemyR2) {
+          this.takeHit(enemyStats(item.type).dps);
+          break;
         }
-        // Sword touches enemy → scheduled damage (once per cooldown)
+        // Sword touches enemy → scheduled damage (own cooldown)
         if (swordReady) {
           const gripD2 = this.tempGrip.distanceToSquared(item.object3D.position);
           if (gripD2 < swordR2) {
@@ -719,45 +749,34 @@ export class PortalSystem extends createSystem({}) {
         }
       }
     }
-
-    if (totalHealthDelta !== 0) {
-      const current = this.playerHealth.peek();
-      const next = Math.max(0, current + totalHealthDelta);
-      if (next !== current) {
-        this.playerHealth.value = next;
-        // Cue once per chunk of damage taken (not per frame) — floor(hp/5)
-        // changing means at least 5 HP drained since the last cue.
-        if (Math.floor(next / 5) < Math.floor(current / 5)) {
-          FX.playerHurt(this.input.gamepads.right ?? this.input.gamepads.left);
-        }
-        if (next <= 0) this.playerDied();
-      }
-    }
   }
 
-  // Per-variant chase AI. Three behaviors stack on the same loop:
-  //  - Robot: aggro only within radius, else walk home to origin.
-  //  - Ghost: always chase (slow), passes through walls.
-  //  - Skull: always chase, periodically switches target between
-  //    live players (multiplayer flavor).
-  //
-  // Dead players are filtered out of the target list entirely so the
-  // round can continue without the game turning into a corpse parade.
-  private tickEnemyAI(deltaSeconds: number, time: number) {
+  // Apply a discrete damage hit. Gated by the hazard cooldown so the
+  // player can't be hit again immediately — that window is also what
+  // the red flash + oof cue are timed to.
+  private takeHit(amount: number) {
     const now = performance.now();
+    if (now < this.damageCooldownUntil) return;
+    this.damageCooldownUntil = now + HAZARD_COOLDOWN_MS;
 
-    // Gather live player positions. Own player excluded if dead.
-    const targets: { id: string; x: number; z: number }[] = [];
-    if (!this.isDead.peek()) {
-      this.player.head.getWorldPosition(this.tempPos);
-      targets.push({ id: this.userId ?? 'self', x: this.tempPos.x, z: this.tempPos.z });
-    }
-    for (const [uid, av] of this.avatars) {
-      if (av.dead) continue;
-      targets.push({ id: uid, x: av.root.position.x, z: av.root.position.z });
-    }
-    if (targets.length === 0) return; // nobody to chase — enemies idle
+    const current = this.playerHealth.peek();
+    const next = Math.max(0, current - amount);
+    this.playerHealth.value = next;
+    this.lastDamageAt.value = Date.now();
+    FX.oof(this.input.gamepads.right ?? this.input.gamepads.left);
+    if (next <= 0) this.playerDied();
+  }
 
+  // Per-variant AI. Three distinct behaviors now:
+  //  - Robot: picks a random heading, walks straight until it hits a
+  //    wall or the board edge, then picks a new heading and repeats.
+  //  - Ghost: slow chase of closest live player, phases through walls.
+  //  - Skull: circles its spawn point at a fixed radius and angular
+  //    velocity chosen at spawn. Ignores walls and the board edges.
+  //
+  // Dead players are excluded from chase targets so a downed player
+  // doesn't keep enemies glued to them.
+  private tickEnemyAI(deltaSeconds: number, time: number) {
     // Walls are static — gather once per tick.
     const walls: { x: number; z: number }[] = [];
     for (const item of this.spawnedEntities.values()) {
@@ -771,34 +790,45 @@ export class PortalSystem extends createSystem({}) {
       return false;
     };
 
-    // Skull target selection — rotate through live players periodically.
-    // Pick once per tick; individual skulls share the selection so the
-    // hunt feels coordinated.
-    const skullRetarget = enemyBehavior('skull').retargetMs ?? 4000;
-    let skullTarget = targets[0];
-    if (this.skullTargetUserId) {
-      const t = targets.find((p) => p.id === this.skullTargetUserId);
-      if (t) skullTarget = t;
+    // Live targets — ghosts still chase, others don't care.
+    const targets: { x: number; z: number }[] = [];
+    if (!this.isDead.peek()) {
+      this.player.head.getWorldPosition(this.tempPos);
+      targets.push({ x: this.tempPos.x, z: this.tempPos.z });
     }
-    if (now >= this.skullRetargetAt) {
-      skullTarget = targets[Math.floor(Math.random() * targets.length)];
-      this.skullTargetUserId = skullTarget.id;
-      this.skullRetargetAt = now + skullRetarget;
+    for (const [, av] of this.avatars) {
+      if (av.dead) continue;
+      targets.push({ x: av.root.position.x, z: av.root.position.z });
     }
 
     for (const item of this.spawnedEntities.values()) {
       if (item.role !== 'enemy') continue;
       const stats = enemyStats(item.type);
-      const behav = enemyBehavior(item.type);
       const pos = item.object3D.position;
 
-      // Pick a target per variant:
-      //   skull → shared skullTarget
-      //   everyone else → closest live player
-      let target = targets[0];
       if (item.type === 'skull') {
-        target = skullTarget;
+        // Pure circular motion around origin; walls + edges ignored.
+        const angle = item.phase + time * item.omega;
+        pos.x = item.origin[0] + item.radius * Math.cos(angle);
+        pos.z = item.origin[2] + item.radius * Math.sin(angle);
+      } else if (item.type === 'robot') {
+        // Straight walk in `heading`; pick a new heading on collision.
+        const step = stats.speed * deltaSeconds;
+        const nx = pos.x + Math.cos(item.heading) * step;
+        const nz = pos.z + Math.sin(item.heading) * step;
+        const outOfBounds =
+          nx < -BOARD_HALF_W || nx > BOARD_HALF_W ||
+          nz < -BOARD_HALF_D || nz > BOARD_HALF_D;
+        if (outOfBounds || hitsWall(nx, nz)) {
+          item.heading = Math.random() * Math.PI * 2;
+        } else {
+          pos.x = nx;
+          pos.z = nz;
+        }
       } else {
+        // Ghost + anything else falls back to chase-closest behaviour.
+        if (targets.length === 0) continue;
+        let target = targets[0];
         let bestD2 = Infinity;
         for (const p of targets) {
           const dx = p.x - pos.x;
@@ -806,42 +836,16 @@ export class PortalSystem extends createSystem({}) {
           const d2 = dx * dx + dz * dz;
           if (d2 < bestD2) { bestD2 = d2; target = p; }
         }
-      }
-
-      // Aggro: robots only chase if target is within radius; otherwise
-      // they return to origin. null radius = always aggroed.
-      let moveToX: number, moveToZ: number;
-      if (behav.aggroRadius === null) {
-        moveToX = target.x;
-        moveToZ = target.z;
-      } else {
         const dx = target.x - pos.x;
         const dz = target.z - pos.z;
-        if (dx * dx + dz * dz < behav.aggroRadius * behav.aggroRadius) {
-          moveToX = target.x;
-          moveToZ = target.z;
-        } else {
-          moveToX = item.origin[0];
-          moveToZ = item.origin[2];
-        }
-      }
-
-      // Move toward destination, optionally blocked by walls.
-      const dx = moveToX - pos.x;
-      const dz = moveToZ - pos.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 0.05) {
-        const step = Math.min(dist, stats.speed * deltaSeconds);
-        const nx = pos.x + (dx * step) / dist;
-        const nz = pos.z + (dz * step) / dist;
-        if (behav.wallPass || !hitsWall(nx, nz)) {
+        const dist = Math.hypot(dx, dz);
+        if (dist > 0.05) {
+          const step = Math.min(dist, stats.speed * deltaSeconds);
+          const nx = pos.x + (dx * step) / dist;
+          const nz = pos.z + (dz * step) / dist;
+          // Ghost ignores walls; fall through without checks.
           pos.x = nx;
           pos.z = nz;
-        } else {
-          // Slide along a wall: try each axis independently so enemies
-          // don't just stick helplessly on a corner.
-          if (!hitsWall(nx, pos.z))      pos.x = nx;
-          else if (!hitsWall(pos.x, nz)) pos.z = nz;
         }
       }
 

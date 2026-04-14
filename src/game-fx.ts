@@ -105,6 +105,12 @@ export const FX = {
     beep(220, 120, "sawtooth", 0.2, 140);
     pulse(gamepad, 0.8, 80);
   },
+  oof: (gamepad?: StatefulGamepad | null) => {
+    // Short grunt — descending sawtooth + a low square thunk layered in
+    beep(200, 160, "sawtooth", 0.26, 110);
+    setTimeout(() => beep(120, 200, "square", 0.18, 80), 45);
+    pulse(gamepad, 1.0, 140);
+  },
   warp: (gamepad?: StatefulGamepad | null) => {
     // Descending whoosh — two overlapping tones sliding down
     beep(1200, 260, "sine", 0.22, 220);

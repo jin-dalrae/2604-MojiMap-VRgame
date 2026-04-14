@@ -116,6 +116,20 @@ export const GUN_COOLDOWN_MS = 220;     // rate-limit trigger spam
 // after the portal requests a round, before the round actually starts.
 export const CHAIR_READY_RADIUS = 0.9; // meters — close enough to the chair
 
+// Game space footprint (matches the grid drawn in src/index.ts: 20×10
+// cells at 1m each). Robots bounce off these edges when random-walking.
+export const BOARD_HALF_W = 10;   // x: [-10, +10]
+export const BOARD_HALF_D = 5;    // z: [-5, +5]
+// Skull circle radii are capped at the smaller play-space dimension —
+// the user asked for "not longer than the smaller width of the game
+// space" so the circle has a chance of staying near the board.
+export const BOARD_MIN_DIM = Math.min(BOARD_HALF_W * 2, BOARD_HALF_D * 2);
+
+// Hit cooldown — after taking damage the player is invulnerable for
+// this long and the red flash / oof cue doesn't retrigger.
+export const HAZARD_COOLDOWN_MS = 1100;
+export const DAMAGE_FLASH_MS = 480; // red overlay fade duration
+
 // Cross-system callbacks registered on `world.globals`. Systems that
 // own data expose these; consumers call without knowing the owner.
 export type DamageFn = (itemKey: string, amount: number) => void;
@@ -168,6 +182,9 @@ export const GameState = {
   // to walk to the chair and press SELECT. HUD renders a ready-check
   // banner while this is true.
   roundPending:   (g: Globals) => getOrInit<boolean>(g, "roundPending", false),
+  // ms-epoch of the last damage hit. HUDSystem watches this to trigger
+  // the red flash. 0 = never damaged this session.
+  lastDamageAt:   (g: Globals) => getOrInit<number>(g, "lastDamageAt", 0),
 };
 
 // Enemies use this as a cell-size for wall avoidance: a wall occupies
