@@ -84,6 +84,16 @@ export const GameActions = {
   setFireProjectile: (g: Globals, fn: FireFn) => { g.fireProjectile = fn; },
 };
 
+// Round end reasons shared with the server / portal.
+export type RoundEndReason = "completed" | "died" | "timeout" | "host-stopped";
+
+export type RoundResult = {
+  reason: RoundEndReason;
+  score: number;
+  // ms epoch — HUD auto-hides when this passes, then clears the signal.
+  expiresAt: number;
+};
+
 // Named getters so signal names stay consistent across systems.
 export const GameState = {
   roundRunning: (g: Globals) => getOrInit<boolean>(g, "roundRunning", false),
@@ -92,4 +102,7 @@ export const GameState = {
   playerHealth: (g: Globals) => getOrInit<number>(g, "playerHealth", MAX_HEALTH),
   equippedLeft: (g: Globals) => getOrInit<"sword" | null>(g, "equippedLeft", null),
   equippedRight:(g: Globals) => getOrInit<"gun" | null>(g, "equippedRight", null),
+  roundResult:  (g: Globals) => getOrInit<RoundResult | null>(g, "roundResult", null),
 };
+
+export const RESULT_DISPLAY_MS = 4500;

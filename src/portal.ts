@@ -17,6 +17,9 @@ import { FX } from "./game-fx.js";
 import {
   GameState,
   GameActions,
+  RESULT_DISPLAY_MS,
+  type RoundEndReason,
+  type RoundResult,
   isPickup,
   isHazard,
   MAX_HEALTH,
@@ -156,6 +159,7 @@ export class PortalSystem extends createSystem({}) {
   private playerHealth!: Signal<number>;
   private equippedLeft!: Signal<"sword" | null>;
   private equippedRight!: Signal<"gun" | null>;
+  private roundResult!: Signal<RoundResult | null>;
   // spaceId is the Quest Shared Spaces XRSharedReferenceSpace UUID when available.
   // Set externally (e.g. by a future SharedSpaceSystem that requests the "shared"
   // feature and listens for the reference space UUID); forwarded on every update.
@@ -180,6 +184,7 @@ export class PortalSystem extends createSystem({}) {
     this.playerHealth  = GameState.playerHealth(globals);
     this.equippedLeft  = GameState.equippedLeft(globals);
     this.equippedRight = GameState.equippedRight(globals);
+    this.roundResult   = GameState.roundResult(globals);
 
     // Expose damage entry-point for ProjectileSystem + any future attackers.
     // Passing the key lets the callback do O(1) lookup + broadcast GRID_CLEAR.
@@ -294,19 +299,28 @@ export class PortalSystem extends createSystem({}) {
         FX.roundStart();
         break;
 
-      case 'ROUND_END':
-        console.log(`[Round] Ended (${msg.reason}) — final score: ${this.score.peek()}`);
+      case 'ROUND_END': {
+        const finalScore = this.score.peek();
+        const reason = (msg.reason ?? 'timeout') as RoundEndReason;
+        console.log(`[Round] Ended (${reason}) — final score: ${finalScore}`);
         this.roundEndsAt.value = 0;
         this.roundRunning.value = false;
         // Drop weapons at round end per design ("if you drop your weapons,
         // they despawn"). Health stays so the player sees their final state.
         this.equippedLeft.value = null;
         this.equippedRight.value = null;
+        // HUD shows the result overlay; it clears the signal when it hides.
+        this.roundResult.value = {
+          reason,
+          score: finalScore,
+          expiresAt: Date.now() + RESULT_DISPLAY_MS,
+        };
         // Reason-driven cue — completion feels different from timeout/death.
-        if      (msg.reason === 'completed') FX.roundWin();
-        else if (msg.reason === 'died')      FX.roundLose();
-        else                                 FX.roundTimeout();
+        if      (reason === 'completed') FX.roundWin();
+        else if (reason === 'died')      FX.roundLose();
+        else                             FX.roundTimeout();
         break;
+      }
 
       case 'GRID_UPDATE':
         this.despawnItem(msg.key);
