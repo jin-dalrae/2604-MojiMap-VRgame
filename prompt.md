@@ -312,3 +312,9 @@ the skulls need 3hp
 ```
 the ghost needs 3hp
 ```
+
+## 2026-04-15T00:20:00Z
+
+```
+i need to make a feautre where when a user says "poo poo doo doo" it shoots out a poop emoji that is a bomb that moves out in front of the user, starts blinking red fast, and then blows up with an explosion, and then it blows up all nearby enemies. i want to restrict the api, and use realtime voice recgonition.
+```

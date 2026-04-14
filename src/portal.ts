@@ -308,6 +308,7 @@ export class PortalSystem extends createSystem({}) {
     GameActions.setDamageEnemy(globals, (key, amount) => this.damageEnemy(key, amount));
     GameActions.setFindEnemyAt(globals, (x, y, z, r2) => this.findEnemyAt(x, y, z, r2));
     GameActions.setSwingSword(globals, () => this.swingSword());
+    GameActions.setExplodeAt(globals, (x, y, z, r) => this.explodeAt(x, y, z, r));
 
     this.connectWS();
     this.setupKeyboard();
@@ -391,6 +392,13 @@ export class PortalSystem extends createSystem({}) {
           e.preventDefault();
           this.swingSword();
           break;
+        case 'KeyB': {
+          e.preventDefault();
+          // Keyboard fallback for the voice-triggered poop bomb.
+          const spawn = GameActions.spawnBomb(this.world.globals as Record<string, unknown>);
+          spawn?.();
+          break;
+        }
       }
     };
     window.addEventListener('keydown', handler);
@@ -1215,6 +1223,35 @@ export class PortalSystem extends createSystem({}) {
     const flap  = Math.sin(time * BIRD_FLAP_FREQ + item.phase) * BIRD_FLAP_AMP;
     const drift = Math.sin(time * BIRD_DRIFT_FREQ + item.phase * 0.3) * BIRD_DRIFT_AMP;
     pos.y = BIRD_FLIGHT_HEIGHT + flap + drift;
+  }
+
+  // AoE: kill every enemy, bird, and wood block inside a horizontal
+  // radius. Called by BombSystem on detonation. Uses XZ distance so the
+  // bomb's altitude doesn't need to match grounded targets.
+  private explodeAt(x: number, _y: number, z: number, radius: number) {
+    const r2 = radius * radius;
+    for (const [key, item] of [...this.spawnedEntities]) {
+      const dx = item.object3D.position.x - x;
+      const dz = item.object3D.position.z - z;
+      if (dx * dx + dz * dz > r2) continue;
+      if (item.role === 'enemy') {
+        // Overkill damage ensures the kill path runs (score + despawn).
+        this.damageEnemy(key, 9999);
+      } else if (item.role === 'bird') {
+        const it = this.spawnedEntities.get(key);
+        if (it) this.damageBird(key, it, 9999);
+      } else if (item.type === 'wood') {
+        const it = this.spawnedEntities.get(key);
+        if (it) {
+          it.hp = 0;
+          it.hitFlashUntil = performance.now() + WOOD_HIT_FLASH_MS;
+          this.despawnItem(key);
+          if (this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type: 'GRID_CLEAR', key }));
+          }
+        }
+      }
+    }
   }
 
   // Sword contact + physics-ish hit detection. Runs every frame the

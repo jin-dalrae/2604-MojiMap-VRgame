@@ -156,6 +156,16 @@ export const WOOD_HIT_FLASH_MS = 260;      // shared with bird-style tint flash
 // Sword swing — manual now (no more auto-proximity damage). Keyboard E
 // and the left controller's trigger both dispatch a swing.
 export const SWORD_SWING_MS = 300;
+
+// 💩 Voice-triggered bomb — "poo poo doo doo" spawns one. Flies out in
+// front of the player, blinks red with rising urgency, then detonates
+// and kills every enemy inside BOMB_EXPLOSION_RADIUS.
+export const BOMB_FLY_SPEED   = 4.5;     // m/s while in flight
+export const BOMB_FLY_MS      = 650;     // travel duration
+export const BOMB_BLINK_MS    = 1600;    // blink window before boom
+export const BOMB_EXPLOSION_RADIUS = 3.2; // meters
+export const BOMB_EXPLOSION_MS = 450;    // visible flash duration
+export const BOMB_COOLDOWN_MS  = 2500;   // per-player throttle
 // Contact model: the tip has to be moving > SWORD_MIN_SPEED (m/s) to
 // register damage. A still sword does nothing; an arm swing or the
 // E-key animation both produce enough velocity to count.
@@ -186,6 +196,10 @@ export type FindEnemyFn = (
   radius2: number,
 ) => string | null;
 
+// AoE damage centered at a world point — bombs use this to wipe out
+// every enemy/bird inside a radius in one call.
+export type AreaDamageFn = (x: number, y: number, z: number, radius: number) => void;
+
 export const GameActions = {
   damageEnemy: (g: Globals) => g.damageEnemy as DamageFn | undefined,
   setDamageEnemy: (g: Globals, fn: DamageFn) => { g.damageEnemy = fn; },
@@ -195,6 +209,10 @@ export const GameActions = {
   setFireProjectile: (g: Globals, fn: FireFn) => { g.fireProjectile = fn; },
   swingSword: (g: Globals) => g.swingSword as FireFn | undefined,
   setSwingSword: (g: Globals, fn: FireFn) => { g.swingSword = fn; },
+  spawnBomb: (g: Globals) => g.spawnBomb as FireFn | undefined,
+  setSpawnBomb: (g: Globals, fn: FireFn) => { g.spawnBomb = fn; },
+  explodeAt: (g: Globals) => g.explodeAt as AreaDamageFn | undefined,
+  setExplodeAt: (g: Globals, fn: AreaDamageFn) => { g.explodeAt = fn; },
 };
 
 // Round end reasons shared with the server / portal.

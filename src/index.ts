@@ -17,6 +17,8 @@ import { SyncSystem } from "./sync.js";
 import { WeaponSystem } from "./weapon-system.js";
 import { HUDSystem } from "./hud-system.js";
 import { ProjectileSystem } from "./projectile-system.js";
+import { BombSystem } from "./bomb-system.js";
+import { VoiceSystem } from "./voice-system.js";
 
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
   xr: {
@@ -44,6 +46,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     .registerSystem(SyncSystem)
     .registerSystem(WeaponSystem)
     .registerSystem(ProjectileSystem)
+    .registerSystem(BombSystem)
+    .registerSystem(VoiceSystem)
     .registerSystem(HUDSystem);
 
   // ── Grid Floor (20 cols × 10 rows, 1m square cells) ───────

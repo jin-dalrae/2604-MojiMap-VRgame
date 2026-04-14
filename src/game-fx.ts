@@ -132,6 +132,24 @@ export const FX = {
     setTimeout(() => beep(90, 140, "square", 0.2, 55), 25);
     pulse(gamepad, 0.85, 90);
   },
+  bombThrow: (gamepad?: StatefulGamepad | null) => {
+    // Whoosh + squish as the poop bomb launches
+    beep(280, 180, "triangle", 0.2, 110);
+    setTimeout(() => beep(180, 120, "square", 0.16, 90), 40);
+    pulse(gamepad, 0.7, 80);
+  },
+  bombTick: () => {
+    // Tight click that plays while the bomb blinks
+    beep(1100, 40, "square", 0.1);
+  },
+  bombExplode: (gamepad?: StatefulGamepad | null) => {
+    // Big boom — low punch + wide noisy tail
+    beep(60, 320, "sawtooth", 0.35, 30);
+    beep(120, 240, "square",   0.3,  40);
+    setTimeout(() => beep(220, 220, "sawtooth", 0.2, 50), 40);
+    setTimeout(() => beep(340, 180, "triangle", 0.18, 80), 90);
+    pulse(gamepad, 1.0, 280);
+  },
   warp: (gamepad?: StatefulGamepad | null) => {
     // Descending whoosh — two overlapping tones sliding down
     beep(1200, 260, "sine", 0.22, 220);
