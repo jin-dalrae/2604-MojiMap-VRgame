@@ -20,8 +20,11 @@ import {
 } from "@iwsdk/core";
 import {
   GameActions,
-  BOMB_FLY_SPEED,
-  BOMB_FLY_MS,
+  BOMB_THROW_FWD,
+  BOMB_THROW_UP,
+  BOMB_GRAVITY,
+  BOMB_FLOOR_Y,
+  BOMB_MAX_FLY_MS,
   BOMB_BLINK_MS,
   BOMB_EXPLOSION_RADIUS,
   BOMB_EXPLOSION_MS,
@@ -85,6 +88,11 @@ export class BombSystem extends createSystem({}) {
   }
 
   // Called by VoiceSystem (phrase match) or PortalSystem keyboard handler.
+  //
+  // Grenade-style launch — bomb spawns at chest height just in front of
+  // the player, with initial velocity = (horizontal forward) + (upward
+  // kick). Gravity applies per-frame so it arcs and lands on the floor
+  // in front of wherever the player was facing.
   private spawnBomb() {
     const now = performance.now();
     if (now - this.lastSpawnAt < BOMB_COOLDOWN_MS) return; // spam guard
@@ -93,11 +101,14 @@ export class BombSystem extends createSystem({}) {
     const head = this.player.head;
     const headPos = new Vector3();
     head.getWorldPosition(headPos);
-    // getWorldDirection returns the *forward* direction the object is
-    // looking — for a Three.js camera-like Object3D this is already -Z,
-    // so the vector points outward from the head.
+    // Head forward direction in world space. Flatten Y so the arc is
+    // level with the ground regardless of head pitch (looking down
+    // shouldn't shoot the grenade into the floor).
     const forward = new Vector3();
     head.getWorldDirection(forward);
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
+    forward.normalize();
 
     const root = new Object3D();
     const sprite = makePoopSprite();
@@ -105,15 +116,21 @@ export class BombSystem extends createSystem({}) {
     const blast = makeBlastMesh();
     root.add(blast);
 
-    // Spawn a bit in front of the face so it's immediately visible.
-    root.position.copy(headPos).addScaledVector(forward, 0.6);
+    // Spawn at chest height, a bit ahead of the face so it doesn't clip.
+    root.position.copy(headPos);
+    root.position.y -= 0.35;
+    root.position.addScaledVector(forward, 0.35);
     this.scene.add(root);
+
+    // Launch velocity: forward component + upward kick for the arc.
+    const velocity = forward.clone().multiplyScalar(BOMB_THROW_FWD);
+    velocity.y = BOMB_THROW_UP;
 
     const bomb: Bomb = {
       root,
       sprite,
       blast,
-      velocity: forward.clone().multiplyScalar(BOMB_FLY_SPEED),
+      velocity,
       spawnedAt: now,
       stage: "flying",
       stageStartedAt: now,
@@ -133,14 +150,27 @@ export class BombSystem extends createSystem({}) {
       const age = now - b.spawnedAt;
 
       if (b.stage === "flying") {
+        // Integrate gravity into velocity, advance position.
+        b.velocity.y -= BOMB_GRAVITY * delta;
         b.root.position.addScaledVector(b.velocity, delta);
-        if (age >= BOMB_FLY_MS) {
+
+        // Landed on the floor → pin and transition to blinking.
+        if (b.root.position.y <= BOMB_FLOOR_Y) {
+          b.root.position.y = BOMB_FLOOR_Y;
+          b.velocity.set(0, 0, 0);
+          b.stage = "blinking";
+          b.stageStartedAt = now;
+        } else if (age > BOMB_MAX_FLY_MS) {
+          // Safety net — if the bomb somehow never lands (shouldn't
+          // happen in a grounded room, but guard anyway), detonate in
+          // place instead of leaking the entity forever.
           b.stage = "blinking";
           b.stageStartedAt = now;
         }
       } else if (b.stage === "blinking") {
-        // Blink rate ramps up over the window. Freq = 4 Hz → 16 Hz.
-        const t = (age - BOMB_FLY_MS) / BOMB_BLINK_MS;
+        // Blink rate ramps up across the window. Freq = 4 Hz → 16 Hz.
+        const sinceBlink = now - b.stageStartedAt;
+        const t = sinceBlink / BOMB_BLINK_MS;
         const freq = 4 + t * 12;
         const on = Math.sin(now / 1000 * Math.PI * 2 * freq) > 0;
         const mat = b.sprite.material as SpriteMaterial;

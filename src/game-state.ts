@@ -157,15 +157,18 @@ export const WOOD_HIT_FLASH_MS = 260;      // shared with bird-style tint flash
 // and the left controller's trigger both dispatch a swing.
 export const SWORD_SWING_MS = 300;
 
-// 💩 Voice-triggered bomb — "poo poo doo doo" spawns one. Flies out in
-// front of the player, blinks red with rising urgency, then detonates
-// and kills every enemy inside BOMB_EXPLOSION_RADIUS.
-export const BOMB_FLY_SPEED   = 4.5;     // m/s while in flight
-export const BOMB_FLY_MS      = 650;     // travel duration
-export const BOMB_BLINK_MS    = 1600;    // blink window before boom
+// 💩 Voice-triggered bomb — "poo poo doo doo" spawns one. Launched like
+// a grenade: forward-and-up throw, gravity arcs it down, lands on the
+// floor and blinks with rising urgency before detonating.
+export const BOMB_THROW_FWD   = 5.0;   // m/s horizontal component on launch
+export const BOMB_THROW_UP    = 4.2;   // m/s vertical component on launch
+export const BOMB_GRAVITY     = 9.8;   // m/s² — realistic-ish arc
+export const BOMB_FLOOR_Y     = 0.25;  // rest height above the world floor
+export const BOMB_MAX_FLY_MS  = 3000;  // safety timeout if the arc somehow never lands
+export const BOMB_BLINK_MS    = 1600;  // blink window before boom
 export const BOMB_EXPLOSION_RADIUS = 3.2; // meters
-export const BOMB_EXPLOSION_MS = 450;    // visible flash duration
-export const BOMB_COOLDOWN_MS  = 2500;   // per-player throttle
+export const BOMB_EXPLOSION_MS = 450;  // visible flash duration
+export const BOMB_COOLDOWN_MS  = 2500; // per-player throttle
 // Contact model: the tip has to be moving > SWORD_MIN_SPEED (m/s) to
 // register damage. A still sword does nothing; an arm swing or the
 // E-key animation both produce enough velocity to count.

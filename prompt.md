@@ -318,3 +318,9 @@ the ghost needs 3hp
 ```
 i need to make a feautre where when a user says "poo poo doo doo" it shoots out a poop emoji that is a bomb that moves out in front of the user, starts blinking red fast, and then blows up with an explosion, and then it blows up all nearby enemies. i want to restrict the api, and use realtime voice recgonition.
 ```
+
+## 2026-04-15T00:28:00Z
+
+```
+its not going in front of the user, the bomb needs to be sent out in front of the user. think like a grenade. also the poo is goming randomly from the air? like it should be arcing out from the users postition from out in front of the user.
+```
