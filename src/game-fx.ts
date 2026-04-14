@@ -126,6 +126,12 @@ export const FX = {
     setTimeout(() => beep(1100, 80, "triangle", 0.16, 800), 120);
     pulse(gamepad, 0.5, 50);
   },
+  woodHit: (gamepad?: StatefulGamepad | null) => {
+    // Woody thunk — low square burst + shorter mid knock
+    beep(170, 110, "square", 0.24, 80);
+    setTimeout(() => beep(90, 140, "square", 0.2, 55), 25);
+    pulse(gamepad, 0.85, 90);
+  },
   warp: (gamepad?: StatefulGamepad | null) => {
     // Descending whoosh — two overlapping tones sliding down
     beep(1200, 260, "sine", 0.22, 220);

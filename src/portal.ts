@@ -57,6 +57,9 @@ import {
   BIRD_HIT_FLASH_MS,
   BIRD_POINTS,
   BIRD_HIT_RADIUS,
+  WOOD_HP,
+  WOOD_COLOR,
+  WOOD_HIT_FLASH_MS,
   enemyBehavior,
   type ItemRole,
 } from "./game-state.js";
@@ -237,6 +240,7 @@ export class PortalSystem extends createSystem({}) {
   // flash + oof cue.
   private damageCooldownUntil = 0;
   private lastDamageAt!: Signal<number>;
+  private lastSwingAt!: Signal<number>;
   // spaceId is the Quest Shared Spaces XRSharedReferenceSpace UUID when available.
   // Set externally (e.g. by a future SharedSpaceSystem that requests the "shared"
   // feature and listens for the reference space UUID); forwarded on every update.
@@ -283,11 +287,13 @@ export class PortalSystem extends createSystem({}) {
     this.isDead         = GameState.isDead(globals);
     this.roundPending   = GameState.roundPending(globals);
     this.lastDamageAt   = GameState.lastDamageAt(globals);
+    this.lastSwingAt    = GameState.lastSwingAt(globals);
 
     // Expose damage entry-point for ProjectileSystem + any future attackers.
     // Passing the key lets the callback do O(1) lookup + broadcast GRID_CLEAR.
     GameActions.setDamageEnemy(globals, (key, amount) => this.damageEnemy(key, amount));
     GameActions.setFindEnemyAt(globals, (x, y, z, r2) => this.findEnemyAt(x, y, z, r2));
+    GameActions.setSwingSword(globals, () => this.swingSword());
 
     this.connectWS();
     this.setupKeyboard();
@@ -366,6 +372,10 @@ export class PortalSystem extends createSystem({}) {
         case 'KeyG':
           e.preventDefault();
           this.forcePickupNearest();
+          break;
+        case 'KeyE':
+          e.preventDefault();
+          this.swingSword();
           break;
       }
     };
@@ -750,19 +760,18 @@ export class PortalSystem extends createSystem({}) {
     const type = item.type ?? 'decor';
     const baseSize = 1.1;
 
-    // 🟦 cubes become real 3D walls — tall blocks the player can't
-    // pass through and that visually carve up the play area.
-    //
-    // Pre-round state is a thin blue floor tile (scaled down on Y +
-    // collider omitted) so players can walk freely to the chair to
-    // start the game. setWallState() promotes them on ROUND_START.
-    if (type === 'cube') {
+    // 🟦 cubes and 🟫 wood both render as 3D wall-shaped blocks. Cubes
+    // are invincible; wood breaks after WOOD_HP sword swings. They share
+    // the same pre-round preview (thin floor tile + walk-through) so
+    // players can navigate to the chair without getting boxed in.
+    if (type === 'cube' || type === 'wood') {
+      const isWood = type === 'wood';
       const wall = new Mesh(
         new BoxGeometry(WALL_WIDTH, WALL_HEIGHT, WALL_WIDTH),
         new MeshStandardMaterial({
-          color: WALL_COLOR,
-          roughness: 0.7,
-          metalness: 0.1,
+          color: isWood ? WOOD_COLOR : WALL_COLOR,
+          roughness: isWood ? 0.95 : 0.7,
+          metalness: isWood ? 0 : 0.1,
         }),
       );
       const entity = this.world.createTransformEntity(wall);
@@ -774,7 +783,7 @@ export class PortalSystem extends createSystem({}) {
         type,
         baseSize,
         origin: [x, y, z],
-        hp: 0,
+        hp: isWood ? WOOD_HP : 0,
         nextDamageableAt: 0,
         heading: 0, radius: 0, omega: 0, phase: 0,
         birdState: 'flying', hitFlashUntil: 0,
@@ -934,19 +943,10 @@ export class PortalSystem extends createSystem({}) {
 
     const pickupR2 = PICKUP_RADIUS * PICKUP_RADIUS;
     const fireR2   = FIRE_RADIUS   * FIRE_RADIUS;
-    const swordR2  = SWORD_RADIUS  * SWORD_RADIUS;
     const enemyR2  = ENEMY_DAMAGE_RADIUS * ENEMY_DAMAGE_RADIUS;
 
-    const now = performance.now();
-    const swordEquipped = this.equippedLeft.peek() === 'sword';
-    const swordReady = swordEquipped && now >= this.lastSwordHitAt + SWORD_COOLDOWN_MS;
-    if (swordEquipped) {
-      this.player.gripSpaces.left.getWorldPosition(this.tempGrip);
-    }
-
-    const hittable = now >= this.damageCooldownUntil;
+    const hittable = performance.now() >= this.damageCooldownUntil;
     const headX = this.tempPos.x, headZ = this.tempPos.z;
-    const gripX = this.tempGrip.x, gripZ = this.tempGrip.z;
 
     // Snapshot keys first: despawning during Map iteration is fine, but
     // deterministic ordering matters when several items overlap.
@@ -976,23 +976,61 @@ export class PortalSystem extends createSystem({}) {
         break;
       }
 
-      // ── Enemy: one discrete hit per cooldown on contact ──
+      // ── Enemy touch → damage the player (sword damage to enemies is
+      //    now handled explicitly in swingSword()).
+      if (item.role === 'enemy' && hittable && headD2 < enemyR2) {
+        this.takeHit(enemyStats(item.type).dps);
+        break;
+      }
+    }
+  }
+
+  // Active sword swing — called by keyboard (E) and the left trigger.
+  // Hits every enemy or wood block within SWORD_RADIUS once, regardless
+  // of how many swings per second the player spams (cooldown still
+  // rate-limits the visual + damage).
+  private swingSword() {
+    if (this.isDead.peek()) return;
+    if (this.equippedLeft.peek() !== 'sword') return;
+    const now = performance.now();
+    if (now < this.lastSwordHitAt + SWORD_COOLDOWN_MS) return;
+    this.lastSwordHitAt = now;
+
+    // Drive the WeaponSystem animation + register the swing audibly.
+    this.lastSwingAt.value = Date.now();
+
+    this.player.gripSpaces.left.getWorldPosition(this.tempGrip);
+    const swordR2 = SWORD_RADIUS * SWORD_RADIUS;
+    let landed = false;
+    for (const [key, item] of [...this.spawnedEntities]) {
+      const dx = this.tempGrip.x - item.object3D.position.x;
+      const dz = this.tempGrip.z - item.object3D.position.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > swordR2) continue;
       if (item.role === 'enemy') {
-        if (hittable && headD2 < enemyR2) {
-          this.takeHit(enemyStats(item.type).dps);
-          break;
-        }
-        // Sword (horizontal distance too — hand height varies).
-        if (swordReady) {
-          const dgx = gripX - ix, dgz = gripZ - iz;
-          const gripD2 = dgx * dgx + dgz * dgz;
-          if (gripD2 < swordR2) {
-            this.lastSwordHitAt = now;
-            const killed = this.damageEnemy(key, SWORD_DAMAGE);
-            if (!killed) FX.swordHit(this.input.gamepads.left);
-            continue;
-          }
-        }
+        this.damageEnemy(key, SWORD_DAMAGE);
+        landed = true;
+      } else if (item.type === 'wood') {
+        this.damageWood(key, item);
+        landed = true;
+      }
+    }
+    // Generic swing whoosh even on a whiff — feels better than silence.
+    FX.swordHit(this.input.gamepads.left);
+    void landed; // reserved for a future miss-specific cue if we want one
+  }
+
+  // Wood damage — 5 sword hits to break. Flashes red per hit (the wall
+  // tick picks up hitFlashUntil). On death: GRID_CLEAR so other clients
+  // see it vanish, same as any other grid removal.
+  private damageWood(key: string, item: SpawnedItem) {
+    item.hp -= 1;
+    item.hitFlashUntil = performance.now() + WOOD_HIT_FLASH_MS;
+    FX.woodHit(this.input.gamepads.left);
+    if (item.hp <= 0) {
+      this.despawnItem(key);
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'GRID_CLEAR', key }));
       }
     }
   }
@@ -1167,6 +1205,23 @@ export class PortalSystem extends createSystem({}) {
     pos.y = BIRD_FLIGHT_HEIGHT + flap + drift;
   }
 
+  // Walls (incl. wood) may be flashing red from a sword hit. Each frame
+  // we either paint the flash color or snap back to the base color —
+  // unconditional writes are cheap for Three.js Color and keep this
+  // logic trivially correct for multiple wall variants.
+  private tickWallFlash() {
+    const now = performance.now();
+    for (const item of this.spawnedEntities.values()) {
+      if (item.kind !== 'wall') continue;
+      const mat = (item.object3D as Mesh).material as MeshStandardMaterial;
+      if (now < item.hitFlashUntil) {
+        mat.color.setRGB(1.6, 0.28, 0.28);
+      } else {
+        mat.color.setHex(item.type === 'wood' ? WOOD_COLOR : WALL_COLOR);
+      }
+    }
+  }
+
   private playerDied() {
     console.log('[Round] Player died — entering spectator mode');
     // Round continues for everyone else. Local player becomes a
@@ -1313,6 +1368,9 @@ export class PortalSystem extends createSystem({}) {
       this.tickEnemyAI(delta, time);
       this.handleCollisions(delta);
     }
+    // Wall red-flash (on sword hit) runs any time so the tint resets
+    // cleanly regardless of round state.
+    this.tickWallFlash();
     // Ready-check is active only during a pending round.
     this.tickReadyCheck();
 

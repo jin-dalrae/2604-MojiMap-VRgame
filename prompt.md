@@ -282,3 +282,9 @@ fill out the prompts, there is a doc called chat-history.txt, and if you go thru
 ```
 the eagles need to be like 3x as high, and the bobbing motion is great, but need to be moving slightly faster in a direction they are headed. the randomness of where they are headed is good as is. thier hitbox needs to be slighlty bigger. before the game starts, make it so walls are just blue squares on the ground, and ad a glowing beacon around the chair that goes infinitly upward. whe the game starts, the walls show up immediatly, before the game starts, users should also be able to go through the walls. the purpose of this is so they can find the chair, and aren't blocked by walls int he start of the game so they can get to the chiar to start the game.
 ```
+
+## 2026-04-14T23:30:00Z
+
+```
+how do i make a swing sword animation on a keyboard press like the letter E, since i cant swing the sword otherwise. give teh sword a hitbox. make 🟫 wood, make ti the same as the blue walls (also the same pregame hidden behavior), and this can be whacked witht he sowrd, and 5 times hitting it and it disappears. when yo uhit it, it flashes red like the eagle.
+```

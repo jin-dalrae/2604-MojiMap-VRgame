@@ -15,7 +15,12 @@ import {
   Object3D,
   InputComponent,
 } from "@iwsdk/core";
-import { GameState, GameActions, GUN_COOLDOWN_MS } from "./game-state.js";
+import {
+  GameState,
+  GameActions,
+  GUN_COOLDOWN_MS,
+  SWORD_SWING_MS,
+} from "./game-state.js";
 import { FX } from "./game-fx.js";
 
 // Factories kept tiny on purpose — these are placeholder shapes that
@@ -86,36 +91,72 @@ export class WeaponSystem extends createSystem({}) {
   private rightWeapon: Object3D | null = null;
   private lastFireAt = 0;
   private gunEquipped = false;
+  private swordEquipped = false;
+  // Set to performance.now() when a swing starts; cleared when the
+  // animation completes. Drives the sword's rotation.y sweep.
+  private swingAnimStartAt = 0;
 
   init() {
     const globals = this.world.globals as Record<string, unknown>;
     const equippedLeft  = GameState.equippedLeft(globals);
     const equippedRight = GameState.equippedRight(globals);
+    const lastSwingAt   = GameState.lastSwingAt(globals);
 
-    // Signal subscriptions fire immediately with current value too, so
-    // this also handles "already equipped at init" (e.g. rejoining mid-round).
     this.cleanupFuncs.push(
-      equippedLeft.subscribe((v) => this.syncLeft(v)),
+      equippedLeft.subscribe((v) => {
+        this.syncLeft(v);
+        this.swordEquipped = v === 'sword';
+      }),
       equippedRight.subscribe((v) => {
         this.syncRight(v);
         this.gunEquipped = v === 'gun';
       }),
+      // PortalSystem bumps this signal whenever swingSword() runs — that's
+      // our cue to kick the visual animation. This fires both for keyboard
+      // and controller triggered swings.
+      lastSwingAt.subscribe((ms) => {
+        if (ms > 0) this.swingAnimStartAt = performance.now();
+      }),
     );
   }
 
-  // Trigger-to-fire: only while the squirt gun is equipped. Rate-limit by
-  // a simple cooldown so holding the trigger doesn't flood the scene.
+  // Per-frame: poll gun/sword triggers, run sword swing animation.
   update() {
-    if (!this.gunEquipped) return;
-    const gamepad = this.input.gamepads.right;
-    if (!gamepad?.getButtonDown(InputComponent.Trigger)) return;
     const now = performance.now();
-    if (now - this.lastFireAt < GUN_COOLDOWN_MS) return;
-    this.lastFireAt = now;
 
-    const fire = GameActions.fireProjectile(this.world.globals as Record<string, unknown>);
-    fire?.();
-    FX.gunFire(gamepad);
+    // Right trigger → fire squirt gun (rate-limited).
+    if (this.gunEquipped) {
+      const gamepad = this.input.gamepads.right;
+      if (gamepad?.getButtonDown(InputComponent.Trigger) &&
+          now - this.lastFireAt >= GUN_COOLDOWN_MS) {
+        this.lastFireAt = now;
+        const fire = GameActions.fireProjectile(this.world.globals as Record<string, unknown>);
+        fire?.();
+        FX.gunFire(gamepad);
+      }
+    }
+
+    // Left trigger → swing sword. Dispatches to PortalSystem which
+    // applies the damage and bumps lastSwingAt → triggers our animation.
+    if (this.swordEquipped) {
+      const gamepad = this.input.gamepads.left;
+      if (gamepad?.getButtonDown(InputComponent.Trigger)) {
+        const swing = GameActions.swingSword(this.world.globals as Record<string, unknown>);
+        swing?.();
+      }
+    }
+
+    // Sword swing animation — sine arc on rotation.y over SWORD_SWING_MS.
+    if (this.swingAnimStartAt > 0 && this.leftWeapon) {
+      const t = (now - this.swingAnimStartAt) / SWORD_SWING_MS;
+      if (t >= 1) {
+        this.leftWeapon.rotation.y = 0;
+        this.swingAnimStartAt = 0;
+      } else {
+        // Forehand slash — start neutral, sweep to ~2π/3 forehand, return.
+        this.leftWeapon.rotation.y = -Math.sin(t * Math.PI) * (2 * Math.PI / 3);
+      }
+    }
   }
 
   private syncLeft(weapon: "sword" | null) {
@@ -126,6 +167,7 @@ export class WeaponSystem extends createSystem({}) {
       this.player.gripSpaces.left.remove(this.leftWeapon);
       this.disposeSubtree(this.leftWeapon);
       this.leftWeapon = null;
+      this.swingAnimStartAt = 0; // cancel any in-flight animation
     }
   }
 

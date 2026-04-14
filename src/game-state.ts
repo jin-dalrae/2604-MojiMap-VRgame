@@ -147,6 +147,16 @@ export const BIRD_POINTS = 1;                 // score on kill, same as a star
 // Slightly forgiving gun hitbox — birds are small, high, and erratic.
 export const BIRD_HIT_RADIUS = 0.85;
 
+// 🟫 wood block — visually a wall but breakable. Same flat-preview /
+// tall-during-round behavior as 🟦 walls, plus a small HP bar.
+export const WOOD_HP = 5;
+export const WOOD_COLOR = 0x7a3e12;        // warm brown, matches the 🟫 emoji
+export const WOOD_HIT_FLASH_MS = 260;      // shared with bird-style tint flash
+
+// Sword swing — manual now (no more auto-proximity damage). Keyboard E
+// and the left controller's trigger both dispatch a swing.
+export const SWORD_SWING_MS = 300;
+
 // Cross-system callbacks registered on `world.globals`. Systems that
 // own data expose these; consumers call without knowing the owner.
 export type DamageFn = (itemKey: string, amount: number) => void;
@@ -166,6 +176,8 @@ export const GameActions = {
   setFindEnemyAt: (g: Globals, fn: FindEnemyFn) => { g.findEnemyAt = fn; },
   fireProjectile: (g: Globals) => g.fireProjectile as FireFn | undefined,
   setFireProjectile: (g: Globals, fn: FireFn) => { g.fireProjectile = fn; },
+  swingSword: (g: Globals) => g.swingSword as FireFn | undefined,
+  setSwingSword: (g: Globals, fn: FireFn) => { g.swingSword = fn; },
 };
 
 // Round end reasons shared with the server / portal.
@@ -202,6 +214,9 @@ export const GameState = {
   // ms-epoch of the last damage hit. HUDSystem watches this to trigger
   // the red flash. 0 = never damaged this session.
   lastDamageAt:   (g: Globals) => getOrInit<number>(g, "lastDamageAt", 0),
+  // ms-epoch of the last sword swing. WeaponSystem watches this to run
+  // the visual slash animation on the left-hand sword.
+  lastSwingAt:    (g: Globals) => getOrInit<number>(g, "lastSwingAt", 0),
 };
 
 // Enemies use this as a cell-size for wall avoidance: a wall occupies
