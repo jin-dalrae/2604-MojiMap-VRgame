@@ -306,3 +306,9 @@ the sowrd needs to be adjusted, because everything instan dies when it just touc
 ```
 the skulls need 3hp
 ```
+
+## 2026-04-15T00:10:00Z
+
+```
+the ghost needs 3hp
+```

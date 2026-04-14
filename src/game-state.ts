@@ -81,7 +81,7 @@ export const ENEMY_STATS: Record<string, EnemyStats> = {
   robot: { hp: 4, speed: 1.5,  dps: 20, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
   // 👻 Very slow but relentless — also the only enemy that phases
   //     through walls. Floats + weaves vertically.
-  ghost: { hp: 2, speed: 0.45, dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
+  ghost: { hp: 3, speed: 0.45, dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
   // 💀 Normal-speed stalker — locks on, occasionally switches targets.
   skull: { hp: 3, speed: 0.95, dps: 26, killPoints: 1, bobAmp: 0,    bobSpeed: 0   },
 };
