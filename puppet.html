@@ -187,7 +187,8 @@
     }
 
     // ── WebSocket ────────────────────────────────────────────
-    const WS_URL = `ws://${location.hostname}:3001`;
+    const _isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const WS_URL = _isLocal ? `ws://${location.hostname}:3001` : `wss://ar-app-ws-production.up.railway.app`;
     let ws = null;
     let wsReady = false;
     let myUserId = null;

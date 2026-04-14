@@ -102,7 +102,8 @@ export class PortalSystem extends createSystem({}) {
   }
 
   private connectWS() {
-    const url = `ws://${window.location.hostname}:3001`;
+    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const url = isLocal ? `ws://${location.hostname}:3001` : `wss://ar-app-ws-production.up.railway.app`;
     console.log(`[GridSync] Connecting → ${url}`);
     const ws = new WebSocket(url);
 
