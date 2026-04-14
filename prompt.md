@@ -300,3 +300,9 @@ if the sword makes contact with an enemy, they should be stunned for a split sec
 ```
 the sowrd needs to be adjusted, because everything instan dies when it just touches them. and i'm not even swigning. i should have to do a big swing to actually make it damage.
 ```
+
+## 2026-04-15T00:05:00Z
+
+```
+the skulls need 3hp
+```

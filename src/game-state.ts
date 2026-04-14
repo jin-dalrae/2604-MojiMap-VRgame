@@ -83,7 +83,7 @@ export const ENEMY_STATS: Record<string, EnemyStats> = {
   //     through walls. Floats + weaves vertically.
   ghost: { hp: 2, speed: 0.45, dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
   // 💀 Normal-speed stalker — locks on, occasionally switches targets.
-  skull: { hp: 1, speed: 0.95, dps: 26, killPoints: 1, bobAmp: 0,    bobSpeed: 0   },
+  skull: { hp: 3, speed: 0.95, dps: 26, killPoints: 1, bobAmp: 0,    bobSpeed: 0   },
 };
 
 // Per-variant AI behavior flags
