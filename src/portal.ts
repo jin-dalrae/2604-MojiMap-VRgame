@@ -39,6 +39,8 @@ import {
   SWORD_COOLDOWN_MS,
   WARP_RADIUS,
   WARP_COOLDOWN_MS,
+  WALL_CELL_HALF,
+  enemyBehavior,
   type ItemRole,
 } from "./game-state.js";
 
@@ -135,6 +137,13 @@ type AvatarRecord = {
   root: Object3D;
   cone: Mesh;
   entity: { dispose(): void };
+  // Dead = spectator. Avatar still updates position so the portal can
+  // render them moving, but they're translucent and enemy AI ignores them.
+  dead: boolean;
+  // Materials referenced by setOpacity — cached so we don't walk the
+  // subtree every frame.
+  materials: MeshBasicMaterial[];
+  baseOpacities: number[];
 };
 
 // ── System ───────────────────────────────────────────────────
@@ -194,6 +203,12 @@ export class PortalSystem extends createSystem({}) {
   private roundResult!: Signal<RoundResult | null>;
   private goalsTotal!: Signal<number>;
   private goalsCollected!: Signal<number>;
+  private isDead!: Signal<boolean>;
+  // Skull target state — rotates periodically between live players.
+  // userId -> last-retarget timestamp; enemy-specific state lives in
+  // SpawnedItem but target-tracking needs the player list too.
+  private skullTargetUserId: string | null = null;
+  private skullRetargetAt = 0;
   // spaceId is the Quest Shared Spaces XRSharedReferenceSpace UUID when available.
   // Set externally (e.g. by a future SharedSpaceSystem that requests the "shared"
   // feature and listens for the reference space UUID); forwarded on every update.
@@ -208,6 +223,7 @@ export class PortalSystem extends createSystem({}) {
     health: number;
     goalsCollected: number;
     goalsTotal: number;
+    dead: boolean;
     spaceId: string | null;
   } = {
     type: 'PLAYER_POSITION',
@@ -216,6 +232,7 @@ export class PortalSystem extends createSystem({}) {
     health: MAX_HEALTH,
     goalsCollected: 0,
     goalsTotal: 0,
+    dead: false,
     spaceId: null,
   };
 
@@ -235,6 +252,7 @@ export class PortalSystem extends createSystem({}) {
     this.roundResult   = GameState.roundResult(globals);
     this.goalsTotal     = GameState.goalsTotal(globals);
     this.goalsCollected = GameState.goalsCollected(globals);
+    this.isDead         = GameState.isDead(globals);
 
     // Expose damage entry-point for ProjectileSystem + any future attackers.
     // Passing the key lets the callback do O(1) lookup + broadcast GRID_CLEAR.
@@ -318,7 +336,7 @@ export class PortalSystem extends createSystem({}) {
         for (const [, av] of this.avatars) this.disposeAvatar(av);
         this.avatars.clear();
         for (const [uid, user] of Object.entries(msg.users as Record<string, any>)) {
-          if (uid !== this.userId) this.updateAvatar(uid, user.position);
+          if (uid !== this.userId) this.updateAvatar(uid, user.position, !!user.dead);
         }
         // Adopt any round already in progress on the server.
         if (msg.round && msg.round.endsAt > Date.now()) {
@@ -330,7 +348,7 @@ export class PortalSystem extends createSystem({}) {
         }
         break;
 
-      case 'ROUND_START':
+      case 'ROUND_START': {
         console.log(`[Round] Started — ends at ${new Date(msg.endsAt).toISOString()}`);
         // Fresh run: clear inventory + score, heal up. WeaponSystem reacts
         // via the signal subscription and despawns any weapon meshes.
@@ -338,19 +356,25 @@ export class PortalSystem extends createSystem({}) {
         this.playerHealth.value = MAX_HEALTH;
         this.equippedLeft.value = null;
         this.equippedRight.value = null;
+        this.isDead.value = false;
         this.roundEndsAt.value = msg.endsAt;
         this.roundRunning.value = true;
         // Snapshot goal count so checkWin() knows if this was a
         // goal-based round (ignore survival rounds with zero goals).
-        // HUD also reads goalsTotal to decide whether to show "X/Y".
         let total = 0;
         for (const item of this.spawnedEntities.values()) {
           if (item.role === 'goal') total++;
         }
         this.goalsTotal.value = total;
         this.goalsCollected.value = 0;
+        // Teleport the player to a spawn point — deterministic by userId
+        // so two players reliably get different chairs when possible.
+        this.teleportToSpawn();
+        this.skullTargetUserId = null;
+        this.skullRetargetAt = 0;
         FX.roundStart();
         break;
+      }
 
       case 'ROUND_END': {
         const finalScore = this.score.peek();
@@ -380,6 +404,16 @@ export class PortalSystem extends createSystem({}) {
         this.spawnItem(msg.key, msg.item);
         break;
 
+      case 'GRID_SYNC':
+        // Server sends this at ROUND_END to restore the designer's
+        // original layout. Blow away everything we have and repopulate
+        // from the payload so any picked-up items reappear.
+        for (const key of [...this.spawnedEntities.keys()]) this.despawnItem(key);
+        for (const [key, item] of Object.entries(msg.grid as Record<string, any>)) {
+          this.spawnItem(key, item);
+        }
+        break;
+
       case 'GRID_CLEAR':
         this.despawnItem(msg.key);
         break;
@@ -399,7 +433,9 @@ export class PortalSystem extends createSystem({}) {
       }
 
       case 'PLAYER_POSITION':
-        if (msg.userId !== this.userId) this.updateAvatar(msg.userId, msg.position);
+        if (msg.userId !== this.userId) {
+          this.updateAvatar(msg.userId, msg.position, !!msg.dead);
+        }
         break;
     }
   }
@@ -408,44 +444,60 @@ export class PortalSystem extends createSystem({}) {
   private createAvatar(userId: string): AvatarRecord {
     const color = colorForUser(userId);
     const root = new Object3D();
+    // All body materials are created transparent so dead=translucent is
+    // a cheap opacity write (no remake required).
+    const materials: MeshBasicMaterial[] = [];
+    const baseOpacities: number[] = [];
+    const addMat = (m: MeshBasicMaterial) => {
+      m.transparent = true;
+      materials.push(m);
+      baseOpacities.push(m.opacity);
+      return m;
+    };
 
-    // Body — a capsule-like cylinder
     const body = new Mesh(
       new CylinderGeometry(0.15, 0.15, 0.6, 12),
-      new MeshBasicMaterial({ color }),
+      addMat(new MeshBasicMaterial({ color })),
     );
     body.position.y = 0.7;
     root.add(body);
 
-    // Head — sphere
     const head = new Mesh(
       new SphereGeometry(0.2, 16, 16),
-      new MeshBasicMaterial({ color }),
+      addMat(new MeshBasicMaterial({ color })),
     );
     head.position.y = 1.2;
     root.add(head);
 
-    // Emoji face — billboarded sprite above head
     const face = makeEmojiSprite('🧑', 'decor', 0.5);
     face.position.y = 1.55;
     root.add(face);
 
-    // Facing cone — extends forward from head so you can see where they look
     const cone = new Mesh(
       avatarConeGeom,
-      new MeshBasicMaterial({
+      addMat(new MeshBasicMaterial({
         color,
         transparent: true,
         opacity: 0.3,
         depthWrite: false,
         side: DoubleSide,
-      }),
+      })),
     );
     cone.position.y = 1.2;
     root.add(cone);
 
     const entity = this.world.createTransformEntity(root);
-    return { root, cone, entity };
+    return { root, cone, entity, dead: false, materials, baseOpacities };
+  }
+
+  private setAvatarDead(av: AvatarRecord, dead: boolean) {
+    if (av.dead === dead) return;
+    av.dead = dead;
+    // Dead players fade to ~25% opacity; alive restores the per-material
+    // baseline (cone was 0.3, body was 1.0, etc.).
+    for (let i = 0; i < av.materials.length; i++) {
+      av.materials[i].opacity = dead ? av.baseOpacities[i] * 0.3 : av.baseOpacities[i];
+    }
   }
 
   private disposeAvatar(av: AvatarRecord) {
@@ -462,6 +514,7 @@ export class PortalSystem extends createSystem({}) {
   private updateAvatar(
     userId: string,
     pos: { x: number; z: number; heading?: number; pitch?: number },
+    dead = false,
   ) {
     if (!pos) return;
     let av = this.avatars.get(userId);
@@ -469,6 +522,7 @@ export class PortalSystem extends createSystem({}) {
       av = this.createAvatar(userId);
       this.avatars.set(userId, av);
     }
+    this.setAvatarDead(av, dead);
     av.root.position.x = pos.x;
     av.root.position.z = pos.z;
     if (typeof pos.heading === 'number') {
@@ -607,7 +661,11 @@ export class PortalSystem extends createSystem({}) {
   // against the shared grid items. On pickup/kill we broadcast GRID_CLEAR
   // so other clients see the item vanish. No server-side validation —
   // trust-the-client is fine for a prototype, not a competitive game.
+  //
+  // Dead players skip everything: can't pick up items, can't take damage,
+  // can't deal damage with the sword (they have no sword anyway).
   private handleCollisions(deltaSeconds: number) {
+    if (this.isDead.peek()) return;
     this.player.head.getWorldPosition(this.tempPos);
 
     const pickupR2 = PICKUP_RADIUS * PICKUP_RADIUS;
@@ -678,42 +736,167 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
-  // Per-variant chase: speed + optional vertical bob for flying enemies.
-  // Shared one-sin-per-frame phase keeps costs flat even with many ghosts.
+  // Per-variant chase AI. Three behaviors stack on the same loop:
+  //  - Robot: aggro only within radius, else walk home to origin.
+  //  - Ghost: always chase (slow), passes through walls.
+  //  - Skull: always chase, periodically switches target between
+  //    live players (multiplayer flavor).
+  //
+  // Dead players are filtered out of the target list entirely so the
+  // round can continue without the game turning into a corpse parade.
   private tickEnemyAI(deltaSeconds: number, time: number) {
-    this.player.head.getWorldPosition(this.tempPos);
+    const now = performance.now();
+
+    // Gather live player positions. Own player excluded if dead.
+    const targets: { id: string; x: number; z: number }[] = [];
+    if (!this.isDead.peek()) {
+      this.player.head.getWorldPosition(this.tempPos);
+      targets.push({ id: this.userId ?? 'self', x: this.tempPos.x, z: this.tempPos.z });
+    }
+    for (const [uid, av] of this.avatars) {
+      if (av.dead) continue;
+      targets.push({ id: uid, x: av.root.position.x, z: av.root.position.z });
+    }
+    if (targets.length === 0) return; // nobody to chase — enemies idle
+
+    // Walls are static — gather once per tick.
+    const walls: { x: number; z: number }[] = [];
+    for (const item of this.spawnedEntities.values()) {
+      if (item.kind === 'wall') walls.push({ x: item.origin[0], z: item.origin[2] });
+    }
+    const blockR = WALL_CELL_HALF + 0.18; // wall half + enemy half
+    const hitsWall = (x: number, z: number): boolean => {
+      for (const w of walls) {
+        if (Math.abs(x - w.x) < blockR && Math.abs(z - w.z) < blockR) return true;
+      }
+      return false;
+    };
+
+    // Skull target selection — rotate through live players periodically.
+    // Pick once per tick; individual skulls share the selection so the
+    // hunt feels coordinated.
+    const skullRetarget = enemyBehavior('skull').retargetMs ?? 4000;
+    let skullTarget = targets[0];
+    if (this.skullTargetUserId) {
+      const t = targets.find((p) => p.id === this.skullTargetUserId);
+      if (t) skullTarget = t;
+    }
+    if (now >= this.skullRetargetAt) {
+      skullTarget = targets[Math.floor(Math.random() * targets.length)];
+      this.skullTargetUserId = skullTarget.id;
+      this.skullRetargetAt = now + skullRetarget;
+    }
+
     for (const item of this.spawnedEntities.values()) {
       if (item.role !== 'enemy') continue;
       const stats = enemyStats(item.type);
+      const behav = enemyBehavior(item.type);
+      const pos = item.object3D.position;
 
-      // Horizontal chase
-      this.tempChase.set(
-        this.tempPos.x - item.object3D.position.x,
-        0,
-        this.tempPos.z - item.object3D.position.z,
-      );
-      const dist = this.tempChase.length();
-      if (dist > 0.1) {
-        const step = stats.speed * deltaSeconds;
-        this.tempChase.multiplyScalar(step / dist);
-        item.object3D.position.x += this.tempChase.x;
-        item.object3D.position.z += this.tempChase.z;
+      // Pick a target per variant:
+      //   skull → shared skullTarget
+      //   everyone else → closest live player
+      let target = targets[0];
+      if (item.type === 'skull') {
+        target = skullTarget;
+      } else {
+        let bestD2 = Infinity;
+        for (const p of targets) {
+          const dx = p.x - pos.x;
+          const dz = p.z - pos.z;
+          const d2 = dx * dx + dz * dz;
+          if (d2 < bestD2) { bestD2 = d2; target = p; }
+        }
+      }
+
+      // Aggro: robots only chase if target is within radius; otherwise
+      // they return to origin. null radius = always aggroed.
+      let moveToX: number, moveToZ: number;
+      if (behav.aggroRadius === null) {
+        moveToX = target.x;
+        moveToZ = target.z;
+      } else {
+        const dx = target.x - pos.x;
+        const dz = target.z - pos.z;
+        if (dx * dx + dz * dz < behav.aggroRadius * behav.aggroRadius) {
+          moveToX = target.x;
+          moveToZ = target.z;
+        } else {
+          moveToX = item.origin[0];
+          moveToZ = item.origin[2];
+        }
+      }
+
+      // Move toward destination, optionally blocked by walls.
+      const dx = moveToX - pos.x;
+      const dz = moveToZ - pos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 0.05) {
+        const step = Math.min(dist, stats.speed * deltaSeconds);
+        const nx = pos.x + (dx * step) / dist;
+        const nz = pos.z + (dz * step) / dist;
+        if (behav.wallPass || !hitsWall(nx, nz)) {
+          pos.x = nx;
+          pos.z = nz;
+        } else {
+          // Slide along a wall: try each axis independently so enemies
+          // don't just stick helplessly on a corner.
+          if (!hitsWall(nx, pos.z))      pos.x = nx;
+          else if (!hitsWall(pos.x, nz)) pos.z = nz;
+        }
       }
 
       // Vertical bob — ghosts float and weave, ground units skip this.
       if (stats.bobAmp > 0) {
-        item.object3D.position.y =
-          item.origin[1] + 0.5 + Math.sin(time * stats.bobSpeed) * stats.bobAmp;
+        pos.y = item.origin[1] + 0.5 + Math.sin(time * stats.bobSpeed) * stats.bobAmp;
       }
     }
   }
 
   private playerDied() {
-    console.log('[Round] Player died');
-    // Server will broadcast ROUND_END back, which resets everything.
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'ROUND_END', reason: 'died' }));
+    console.log('[Round] Player died — entering spectator mode');
+    // Round continues for everyone else. Local player becomes a
+    // spectator: AI ignores them (see tickEnemyAI), they can't pick up
+    // items (see handleCollisions), and the HUD shows GAME OVER.
+    // Drops weapons since they're not participating anymore.
+    this.isDead.value = true;
+    this.equippedLeft.value = null;
+    this.equippedRight.value = null;
+    FX.roundLose(); // personal death cue — everyone else plays on
+  }
+
+  // Teleport math — moves XROrigin so the player's head lands at `target`
+  // on the XZ plane. Y is left alone so floor-level is preserved.
+  private teleportPlayerTo(targetX: number, targetZ: number) {
+    const headWorld = this.tempPos;
+    this.player.head.getWorldPosition(headWorld);
+    const originWorld = this.tempChase;
+    this.player.getWorldPosition(originWorld);
+    this.player.position.x = targetX - (headWorld.x - originWorld.x);
+    this.player.position.z = targetZ - (headWorld.z - originWorld.z);
+  }
+
+  // Pick a deterministic spawn: hash userId into the spawn list so two
+  // players reliably end up at different chairs when there are enough.
+  // Falls back to origin when no spawns are placed.
+  private teleportToSpawn() {
+    const spawns: { x: number; z: number }[] = [];
+    for (const item of this.spawnedEntities.values()) {
+      if (item.role === 'spawn') {
+        spawns.push({ x: item.origin[0], z: item.origin[2] });
+      }
     }
+    if (spawns.length === 0) {
+      this.teleportPlayerTo(0, 0);
+      return;
+    }
+    // Hash userId to a stable index. Portal observers have no userId
+    // here — fallback to random for offline/dev.
+    let h = 0;
+    const id = this.userId ?? String(Math.random());
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+    const pick = spawns[Math.abs(h) % spawns.length];
+    this.teleportPlayerTo(pick.x, pick.z);
   }
 
   // Warp teleport — active any time, not gated on roundRunning. Walking
@@ -850,6 +1033,7 @@ export class PortalSystem extends createSystem({}) {
     this.posMsg.health         = this.playerHealth.peek();
     this.posMsg.goalsCollected = this.goalsCollected.peek();
     this.posMsg.goalsTotal     = this.goalsTotal.peek();
+    this.posMsg.dead           = this.isDead.peek();
     this.posMsg.spaceId        = this.spaceId;
     this.ws.send(JSON.stringify(this.posMsg));
     this.lastPosSend = now;

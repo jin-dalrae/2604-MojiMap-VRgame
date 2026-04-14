@@ -14,6 +14,7 @@ export type ItemRole =
   | "obstacle-damage"
   | "enemy"
   | "warp"
+  | "spawn"
   | "decor";
 
 export function isPickup(role: ItemRole): boolean {
@@ -75,13 +76,30 @@ export const ENEMY_DEFAULT: EnemyStats = {
 };
 
 export const ENEMY_STATS: Record<string, EnemyStats> = {
-  // 🤖 Slow tank — soaks hits, hits hard on touch
-  robot: { hp: 4, speed: 0.55, dps: 20, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
-  // 👻 Floating, fast, fragile-ish — harder to hit because it weaves up/down
-  ghost: { hp: 2, speed: 1.1,  dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
-  // 💀 Glass cannon — dies to a single hit but sprints and bites hard
-  skull: { hp: 1, speed: 1.45, dps: 28, killPoints: 1, bobAmp: 0,    bobSpeed: 0   },
+  // 🤖 Territorial guard — only chases when a player is within aggro
+  //     range, otherwise walks home. Hits hard on touch.
+  robot: { hp: 4, speed: 0.8,  dps: 20, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
+  // 👻 Very slow but relentless — also the only enemy that phases
+  //     through walls. Floats + weaves vertically.
+  ghost: { hp: 2, speed: 0.45, dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
+  // 💀 Normal-speed stalker — locks on, occasionally switches targets.
+  skull: { hp: 1, speed: 0.95, dps: 26, killPoints: 1, bobAmp: 0,    bobSpeed: 0   },
 };
+
+// Per-variant AI behavior flags
+export type EnemyBehavior = {
+  aggroRadius: number | null;   // null = always aggroed
+  wallPass: boolean;            // if false, blocked by walls
+  retargetMs: number | null;    // null = never switches target
+};
+export const ENEMY_BEHAVIOR: Record<string, EnemyBehavior> = {
+  robot: { aggroRadius: 3.0,  wallPass: false, retargetMs: null  },
+  ghost: { aggroRadius: null, wallPass: true,  retargetMs: null  },
+  skull: { aggroRadius: null, wallPass: false, retargetMs: 4000  },
+};
+export function enemyBehavior(type: string): EnemyBehavior {
+  return ENEMY_BEHAVIOR[type] ?? { aggroRadius: null, wallPass: false, retargetMs: null };
+}
 
 export function enemyStats(type: string): EnemyStats {
   return ENEMY_STATS[type] ?? ENEMY_DEFAULT;
@@ -144,6 +162,13 @@ export const GameState = {
   // back to showing raw score instead of "X/Y".
   goalsTotal:     (g: Globals) => getOrInit<number>(g, "goalsTotal", 0),
   goalsCollected: (g: Globals) => getOrInit<number>(g, "goalsCollected", 0),
+  // Local death flag — true when the player's HP hit 0 during a round.
+  // Round continues; dead players are spectators.
+  isDead:         (g: Globals) => getOrInit<boolean>(g, "isDead", false),
 };
+
+// Enemies use this as a cell-size for wall avoidance: a wall occupies
+// ~0.95m of a cell, so 0.5 is a reasonable "don't enter" radius.
+export const WALL_CELL_HALF = 0.48;
 
 export const RESULT_DISPLAY_MS = 4500;

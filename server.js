@@ -29,15 +29,26 @@ const users = new Map();     // userId -> { position: {x, z, heading}, spaceId }
 
 // Round state. endsAt === 0 means no round in progress.
 // Duration is stored for reference (e.g. portals joining mid-round).
-const round = { endsAt: 0, duration: 0, timeout: null };
+// `snapshot` is a deep copy of gridState at ROUND_START — items the VR
+// clients clear during the round are restored at ROUND_END so the
+// designer's layout is authoritative across rounds.
+const round = { endsAt: 0, duration: 0, timeout: null, snapshot: null };
 
 function endRound(reason) {
   if (!round.endsAt) return;
   if (round.timeout) { clearTimeout(round.timeout); round.timeout = null; }
   round.endsAt = 0;
   round.duration = 0;
+  // Restore the pre-round layout + push a full resync so every client
+  // re-renders from the same authoritative snapshot.
+  if (round.snapshot) {
+    gridState.clear();
+    for (const [k, v] of round.snapshot) gridState.set(k, v);
+    round.snapshot = null;
+  }
   console.log(`[⏱] Round ended (${reason})`);
   broadcast({ type: 'ROUND_END', reason });
+  broadcast({ type: 'GRID_SYNC', grid: Object.fromEntries(gridState) });
 }
 
 function startRound(duration) {
@@ -46,6 +57,10 @@ function startRound(duration) {
   if (round.timeout) clearTimeout(round.timeout);
   round.duration = d;
   round.endsAt = Date.now() + d * 1000;
+  // Snapshot the layout so the designer's grid survives the round even
+  // though individual clients GRID_CLEAR items as they pick them up.
+  round.snapshot = new Map();
+  for (const [k, v] of gridState) round.snapshot.set(k, { ...v });
   // Wipe cached player stats so the leaderboard doesn't show last round's
   // scores until a client sends its first PLAYER_POSITION. Actual truth
   // lives on the VR clients — this just normalizes initial display.
@@ -54,8 +69,9 @@ function startRound(duration) {
     u.health = 100;
     u.goalsCollected = 0;
     u.goalsTotal = 0;
+    u.dead = false;
   }
-  console.log(`[⏱] Round started (${d}s, ends at ${new Date(round.endsAt).toISOString()})`);
+  console.log(`[⏱] Round started (${d}s, snapshot=${round.snapshot.size} items)`);
   broadcast({ type: 'ROUND_START', duration: d, endsAt: round.endsAt });
   // Server is authoritative: auto-broadcast ROUND_END when the timer fires.
   round.timeout = setTimeout(() => endRound('timeout'), d * 1000);
@@ -131,6 +147,7 @@ wss.on('connection', (ws) => {
           health: msg.health ?? 100,
           goalsCollected: msg.goalsCollected ?? 0,
           goalsTotal: msg.goalsTotal ?? 0,
+          dead: !!msg.dead,
         };
         const firstTime = !ws.isPresent;
         ws.isPresent = true;
@@ -155,6 +172,7 @@ wss.on('connection', (ws) => {
           health: record.health,
           goalsCollected: record.goalsCollected,
           goalsTotal: record.goalsTotal,
+          dead: record.dead,
         }, ws);
         break;
       }

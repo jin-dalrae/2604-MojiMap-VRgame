@@ -1,8 +1,12 @@
-// HUDSystem — head-locked status panel showing timer, score, health.
+// HUDSystem — head-locked status HUD.
 //
-// Implementation: a plane mesh textured from a 2D canvas, followed by
-// the player's head via the Follower component. Canvas redraws at 10 Hz
-// (the timer's second resolution doesn't need 60 Hz updates).
+// The main HUD panel is parented directly to `player.head` so it tracks
+// the head rig 1:1 with zero lag — a true fixed HUD rather than a
+// follower-smoothed one. We position it below the viewing center so it
+// doesn't block the play area.
+//
+// Result banner (end-of-round) and Game-Over banner (local death mid-
+// round) are separate head-locked meshes toggled by signal subscriptions.
 
 import {
   createSystem,
@@ -10,8 +14,6 @@ import {
   PlaneGeometry,
   MeshBasicMaterial,
   CanvasTexture,
-  Follower,
-  FollowBehavior,
 } from "@iwsdk/core";
 import {
   GameState,
@@ -22,14 +24,24 @@ import {
 
 const CANVAS_W = 512;
 const CANVAS_H = 128;
-const PANEL_W  = 0.5;  // meters
-const PANEL_H  = 0.125;
+const PANEL_W  = 0.44;  // meters — trimmed so it sits unobtrusively at bottom
+const PANEL_H  = 0.11;
+// Bottom-center of the forward view. x=0 is center, y<0 is below the
+// head's horizon plane, z<0 is forward.
+const PANEL_OFFSET: [number, number, number] = [0, -0.32, -0.9];
 
-// Result overlay — larger, centered further out so it dominates vision.
 const RESULT_CANVAS_W = 1024;
 const RESULT_CANVAS_H = 384;
 const RESULT_PANEL_W  = 1.2;
 const RESULT_PANEL_H  = 0.45;
+// Centered, eye-level, further out so the result panel reads big.
+const RESULT_OFFSET: [number, number, number] = [0, 0.05, -1.8];
+
+const DEAD_CANVAS_W = 1024;
+const DEAD_CANVAS_H = 256;
+const DEAD_PANEL_W  = 1.1;
+const DEAD_PANEL_H  = 0.28;
+const DEAD_OFFSET: [number, number, number] = [0, 0.12, -1.4];
 
 export class HUDSystem extends createSystem({}) {
   private canvas!: HTMLCanvasElement;
@@ -37,14 +49,20 @@ export class HUDSystem extends createSystem({}) {
   private texture!: CanvasTexture;
   private lastDraw = 0;
 
-  // Result overlay — a separate mesh with its own follower so it can
-  // sit further away without affecting HUD readability.
   private resultCanvas!: HTMLCanvasElement;
   private resultCtx!: CanvasRenderingContext2D;
   private resultTexture!: CanvasTexture;
   private resultMesh!: Mesh;
 
+  private deadCanvas!: HTMLCanvasElement;
+  private deadCtx!: CanvasRenderingContext2D;
+  private deadTexture!: CanvasTexture;
+  private deadMesh!: Mesh;
+
   init() {
+    // ── Main HUD panel ───────────────────────────────────────────
+    // Parented to player.head so it moves 1:1 with head tracking.
+    // No Follower, no smoothing — a real fixed HUD.
     this.canvas = document.createElement("canvas");
     this.canvas.width = CANVAS_W;
     this.canvas.height = CANVAS_H;
@@ -54,28 +72,16 @@ export class HUDSystem extends createSystem({}) {
     const mat = new MeshBasicMaterial({
       map: this.texture,
       transparent: true,
-      depthTest: false, // always on top — HUD should never be occluded
+      depthTest: false,
     });
     const mesh = new Mesh(new PlaneGeometry(PANEL_W, PANEL_H), mat);
-    mesh.renderOrder = 999; // pair with depthTest:false to force in-front
+    mesh.renderOrder = 999;
+    mesh.position.set(...PANEL_OFFSET);
+    this.player.head.add(mesh);
 
-    // Persistent so it survives any future level changes. Follower does
-    // the head-tracking, so we don't need to manually sync each frame.
-    const entity = this.world.createTransformEntity(mesh, {
-      parent: this.world.sceneEntity,
-      persistent: true,
-    });
-    entity.addComponent(Follower, {
-      target: this.player.head,
-      offsetPosition: [0, 0.28, -0.9],
-      behavior: FollowBehavior.PivotY,
-      maxAngle: 35,
-      tolerance: 0.2,
-      speed: 6,
-    });
-
-    this.redraw(true);
+    this.redraw();
     this.initResultPanel();
+    this.initDeadPanel();
   }
 
   private initResultPanel() {
@@ -96,26 +102,11 @@ export class HUDSystem extends createSystem({}) {
     );
     this.resultMesh.renderOrder = 1000;
     this.resultMesh.visible = false;
-
-    const entity = this.world.createTransformEntity(this.resultMesh, {
-      parent: this.world.sceneEntity,
-      persistent: true,
-    });
-    entity.addComponent(Follower, {
-      target: this.player.head,
-      offsetPosition: [0, 0.05, -1.8],
-      behavior: FollowBehavior.PivotY,
-      maxAngle: 45,
-      tolerance: 0.3,
-      speed: 8,
-    });
+    this.resultMesh.position.set(...RESULT_OFFSET);
+    this.player.head.add(this.resultMesh);
 
     const globals = this.world.globals as Record<string, unknown>;
     const result = GameState.roundResult(globals);
-
-    // Show when a result lands, hide when cleared. Signal subscription
-    // fires immediately with current value — we guard the null case so
-    // we don't flash an empty panel on first frame.
     this.cleanupFuncs.push(
       result.subscribe((r) => {
         if (r) {
@@ -128,14 +119,45 @@ export class HUDSystem extends createSystem({}) {
     );
   }
 
+  private initDeadPanel() {
+    this.deadCanvas = document.createElement("canvas");
+    this.deadCanvas.width = DEAD_CANVAS_W;
+    this.deadCanvas.height = DEAD_CANVAS_H;
+    this.deadCtx = this.deadCanvas.getContext("2d")!;
+    this.deadTexture = new CanvasTexture(this.deadCanvas);
+
+    const mat = new MeshBasicMaterial({
+      map: this.deadTexture,
+      transparent: true,
+      depthTest: false,
+    });
+    this.deadMesh = new Mesh(
+      new PlaneGeometry(DEAD_PANEL_W, DEAD_PANEL_H),
+      mat,
+    );
+    this.deadMesh.renderOrder = 1001;
+    this.deadMesh.visible = false;
+    this.deadMesh.position.set(...DEAD_OFFSET);
+    this.player.head.add(this.deadMesh);
+
+    this.drawDead();
+
+    const globals = this.world.globals as Record<string, unknown>;
+    const isDead = GameState.isDead(globals);
+    this.cleanupFuncs.push(
+      isDead.subscribe((d) => {
+        this.deadMesh.visible = d;
+      }),
+    );
+  }
+
   update(_delta: number, time: number) {
-    // 10 Hz redraw — the seconds digit is the highest-frequency thing on
-    // the panel. Anything faster wastes draw calls.
+    // 10 Hz redraw — seconds digit is the highest-frequency thing.
     if (time - this.lastDraw < 0.1) return;
     this.lastDraw = time;
-    this.redraw(false);
+    this.redraw();
 
-    // Auto-retire the result panel. HUDSystem owns the lifetime; clearing
+    // Auto-retire the result panel. HUDSystem owns lifetime; clearing
     // the signal drops the subscription back to the hidden state.
     const result = GameState.roundResult(this.world.globals as Record<string, unknown>);
     const r = result.peek();
@@ -144,7 +166,7 @@ export class HUDSystem extends createSystem({}) {
     }
   }
 
-  private redraw(_initial: boolean) {
+  private redraw() {
     const g = this.world.globals as Record<string, unknown>;
     const running = GameState.roundRunning(g).peek();
     const endsAt  = GameState.roundEndsAt(g).peek();
@@ -153,9 +175,7 @@ export class HUDSystem extends createSystem({}) {
     const goalsTotal     = GameState.goalsTotal(g).peek();
     const goalsCollected = GameState.goalsCollected(g).peek();
 
-    const remaining = running
-      ? Math.max(0, (endsAt - Date.now()) / 1000)
-      : 0;
+    const remaining = running ? Math.max(0, (endsAt - Date.now()) / 1000) : 0;
 
     const ctx = this.ctx;
     ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
@@ -187,8 +207,7 @@ export class HUDSystem extends createSystem({}) {
     ctx.fillText("⭐", 210, 64);
     ctx.fillStyle = "#f4f4f5";
     ctx.font = 'bold 52px ui-monospace, SFMono-Regular, Menlo, monospace';
-    const scoreText =
-      goalsTotal > 0 ? `${goalsCollected}/${goalsTotal}` : String(score);
+    const scoreText = goalsTotal > 0 ? `${goalsCollected}/${goalsTotal}` : String(score);
     ctx.fillText(scoreText, 260, 66);
 
     // Health bar
@@ -216,25 +235,21 @@ export class HUDSystem extends createSystem({}) {
 
     const accent = RESULT_COLORS[r.reason] ?? "#71717a";
 
-    // Backdrop
     ctx.fillStyle = "rgba(12,12,16,0.88)";
     roundedRect(ctx, 0, 0, W, H, 40);
     ctx.fill();
 
-    // Accent border
     ctx.strokeStyle = accent;
     ctx.lineWidth = 8;
     roundedRect(ctx, 6, 6, W - 12, H - 12, 34);
     ctx.stroke();
 
-    // Title
     ctx.fillStyle = accent;
     ctx.font = 'bold 136px system-ui, -apple-system, sans-serif';
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(RESULT_TITLES[r.reason] ?? "ROUND OVER", W / 2, 140);
 
-    // Score
     ctx.fillStyle = "#fbbf24";
     ctx.font = 'bold 72px "Apple Color Emoji", system-ui, sans-serif';
     ctx.fillText("⭐", W / 2 - 110, 290);
@@ -244,6 +259,33 @@ export class HUDSystem extends createSystem({}) {
     ctx.fillText(String(r.score), W / 2 - 50, 293);
 
     this.resultTexture.needsUpdate = true;
+  }
+
+  private drawDead() {
+    const ctx = this.deadCtx;
+    const W = DEAD_CANVAS_W, H = DEAD_CANVAS_H;
+    ctx.clearRect(0, 0, W, H);
+
+    // Dark red vignette backdrop so it reads as "bad outcome"
+    ctx.fillStyle = "rgba(0,0,0,0.82)";
+    roundedRect(ctx, 0, 0, W, H, 32);
+    ctx.fill();
+    ctx.strokeStyle = "#ef4444";
+    ctx.lineWidth = 6;
+    roundedRect(ctx, 4, 4, W - 8, H - 8, 28);
+    ctx.stroke();
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#ef4444";
+    ctx.font = 'bold 108px system-ui, -apple-system, sans-serif';
+    ctx.fillText("GAME OVER", W / 2, 110);
+
+    ctx.fillStyle = "#f4f4f5";
+    ctx.font = 'italic 36px system-ui, sans-serif';
+    ctx.fillText("Spectating · round continues", W / 2, 200);
+
+    this.deadTexture.needsUpdate = true;
   }
 }
 
