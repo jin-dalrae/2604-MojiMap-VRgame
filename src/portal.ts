@@ -266,7 +266,7 @@ export class PortalSystem extends createSystem({}) {
   private roundResult!: Signal<RoundResult | null>;
   private goalsTotal!: Signal<number>;
   private goalsCollected!: Signal<number>;
-  private bombCharges!: Signal<number>;
+  private hasBomb!: Signal<boolean>;
   private isDead!: Signal<boolean>;
   // Hazard damage cooldown — player invulnerable while `now` is
   // inside this window. Blocks spam damage and pairs with the red
@@ -318,7 +318,7 @@ export class PortalSystem extends createSystem({}) {
     this.roundResult   = GameState.roundResult(globals);
     this.goalsTotal     = GameState.goalsTotal(globals);
     this.goalsCollected = GameState.goalsCollected(globals);
-    this.bombCharges    = GameState.bombCharges(globals);
+    this.hasBomb        = GameState.hasBomb(globals);
     this.isDead         = GameState.isDead(globals);
     this.roundPending   = GameState.roundPending(globals);
     this.lastDamageAt   = GameState.lastDamageAt(globals);
@@ -615,7 +615,7 @@ export class PortalSystem extends createSystem({}) {
         this.playerHealth.value = MAX_HEALTH;
         this.equippedLeft.value = null;
         this.equippedRight.value = null;
-        this.bombCharges.value = 0;
+        this.hasBomb.value = false;
         this.isDead.value = false;
         this.roundPending.value = false;
         this.roundEndsAt.value = msg.endsAt;
@@ -646,6 +646,7 @@ export class PortalSystem extends createSystem({}) {
         // they despawn"). Health stays so the player sees their final state.
         this.equippedLeft.value = null;
         this.equippedRight.value = null;
+        this.hasBomb.value = false;
         // HUD shows the result overlay; it clears the signal when it hides.
         this.roundResult.value = {
           reason,
@@ -1376,6 +1377,7 @@ export class PortalSystem extends createSystem({}) {
     this.isDead.value = true;
     this.equippedLeft.value = null;
     this.equippedRight.value = null;
+    this.hasBomb.value = false;
     FX.roundLose(); // personal death cue — everyone else plays on
   }
 
@@ -1477,9 +1479,10 @@ export class PortalSystem extends createSystem({}) {
         FX.pickupWeapon(rightPad);
         break;
       case 'weapon-poo':
-        // Picking up 💩 adds one bomb charge — voice/B only work if
-        // you have charges. Stackable across multiple pickups.
-        this.bombCharges.value = this.bombCharges.peek() + 1;
+        // Picking up 💩 grants UNLIMITED bomb throws for the rest of
+        // the round. WeaponSystem also mounts a 💩 visual on the
+        // sword hand on this signal change.
+        this.hasBomb.value = true;
         FX.pickupWeapon(rightPad ?? leftPad);
         break;
       case 'goal':

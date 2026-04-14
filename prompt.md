@@ -348,3 +348,15 @@ its not working now, the poo is not leting me pik it up. it should auto pick up 
 ```
 its not picking up the poo. it hsould pick up in the same way the gun picks up
 ```
+
+## 2026-04-15T01:10:00Z
+
+```
+when you get the poo item, you should get unlimited poo throws. add a poo in the user's sword hand to show this (it can be there at the same time as the sword
+```
+
+## 2026-04-15T01:12:00Z
+
+```
+bombs can also blow up brown walls. make birds worth hte most points of everything.
+```

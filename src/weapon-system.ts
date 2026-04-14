@@ -14,6 +14,9 @@ import {
   MeshStandardMaterial,
   Object3D,
   InputComponent,
+  Sprite,
+  SpriteMaterial,
+  CanvasTexture,
 } from "@iwsdk/core";
 import {
   GameState,
@@ -61,6 +64,25 @@ function makeSword(): { group: Group; tip: Object3D } {
   return { group, tip };
 }
 
+// Tiny billboarded poop emoji that sits on the sword hand to signal
+// "you have unlimited bombs". Coexists with the sword — sibling under
+// the grip, not a child of the sword group.
+function makePooBadge(size = 0.14): Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext("2d")!;
+  ctx.font = '54px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("💩", 32, 36);
+  const tex = new CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  const mat = new SpriteMaterial({ map: tex, transparent: true, depthWrite: true });
+  const s = new Sprite(mat);
+  s.scale.set(size, size, 1);
+  return s;
+}
+
 function makeSquirtGun(): Group {
   const group = new Group();
 
@@ -95,6 +117,9 @@ function makeSquirtGun(): Group {
 export class WeaponSystem extends createSystem({}) {
   private leftWeapon: Object3D | null = null;
   private rightWeapon: Object3D | null = null;
+  // Visible 💩 badge on the sword hand — coexists with the sword.
+  // Indicates the player has the bomb-throw ability.
+  private pooBadge: Sprite | null = null;
   private lastFireAt = 0;
   private gunEquipped = false;
   private swordEquipped = false;
@@ -107,6 +132,7 @@ export class WeaponSystem extends createSystem({}) {
     const equippedLeft  = GameState.equippedLeft(globals);
     const equippedRight = GameState.equippedRight(globals);
     const lastSwingAt   = GameState.lastSwingAt(globals);
+    const hasBomb       = GameState.hasBomb(globals);
 
     this.cleanupFuncs.push(
       equippedLeft.subscribe((v) => {
@@ -123,7 +149,27 @@ export class WeaponSystem extends createSystem({}) {
       lastSwingAt.subscribe((ms) => {
         if (ms > 0) this.swingAnimStartAt = performance.now();
       }),
+      // 💩 badge on the sword hand reflects the bomb ability state.
+      hasBomb.subscribe((v) => this.syncPooBadge(v)),
     );
+  }
+
+  private syncPooBadge(have: boolean) {
+    if (have && !this.pooBadge) {
+      const s = makePooBadge();
+      // Sit it slightly above + behind the grip so it doesn't poke
+      // through the sword blade. Sibling under gripSpaces.left so it
+      // tracks the controller without inheriting the sword's rotation.
+      s.position.set(0.05, 0.06, 0.08);
+      this.player.gripSpaces.left.add(s);
+      this.pooBadge = s;
+    } else if (!have && this.pooBadge) {
+      this.player.gripSpaces.left.remove(this.pooBadge);
+      const m = this.pooBadge.material as SpriteMaterial;
+      if (m.map) m.map.dispose();
+      m.dispose();
+      this.pooBadge = null;
+    }
   }
 
   // Per-frame: poll gun/sword triggers, run sword swing animation.

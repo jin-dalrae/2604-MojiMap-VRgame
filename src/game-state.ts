@@ -145,7 +145,7 @@ export const BIRD_DRIFT_FREQ = 0.6;
 export const BIRD_TURN_P_PER_SEC = 1.8;       // random sharp-turn frequency
 export const BIRD_FALL_SPEED = 3.5;           // m/s downward when dead
 export const BIRD_HIT_FLASH_MS = 260;         // red glow duration after a non-lethal hit
-export const BIRD_POINTS = 1;                 // score on kill, same as a star
+export const BIRD_POINTS = 5;                 // highest-value target on the board
 // Slightly forgiving gun hitbox — birds are small, high, and erratic.
 export const BIRD_HIT_RADIUS = 0.85;
 
@@ -257,10 +257,10 @@ export const GameState = {
   // ms-epoch of the last sword swing. WeaponSystem watches this to run
   // the visual slash animation on the left-hand sword.
   lastSwingAt:    (g: Globals) => getOrInit<number>(g, "lastSwingAt", 0),
-  // 💩 bomb charges — picking up a poopoodoodoo item grants one. The
-  // voice phrase and the B keyboard shortcut both decrement this;
-  // throwing fails silently if it's zero.
-  bombCharges:    (g: Globals) => getOrInit<number>(g, "bombCharges", 0),
+  // 💩 bomb ability — picking up a poopoodoodoo item flips this true
+  // and grants UNLIMITED throws for the rest of the round. Reset on
+  // ROUND_START / ROUND_END / death.
+  hasBomb:        (g: Globals) => getOrInit<boolean>(g, "hasBomb", false),
 };
 
 // Enemies use this as a cell-size for wall avoidance: a wall occupies

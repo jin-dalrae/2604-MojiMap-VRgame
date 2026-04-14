@@ -95,19 +95,17 @@ export class BombSystem extends createSystem({}) {
   // kick). Gravity applies per-frame so it arcs and lands on the floor
   // in front of wherever the player was facing.
   //
-  // Gated on bombCharges — must have picked up a 💩 item first. Throwing
-  // consumes one charge.
+  // Gated on `hasBomb` — must have picked up a 💩 item first. Once
+  // unlocked, throws are unlimited for the rest of the round.
   private spawnBomb() {
     const now = performance.now();
     if (now - this.lastSpawnAt < BOMB_COOLDOWN_MS) return; // spam guard
     const globals = this.world.globals as Record<string, unknown>;
-    const charges = GameState.bombCharges(globals);
-    if (charges.peek() <= 0) {
-      console.log('[Bomb] no charges — pick up a 💩 first');
+    if (!GameState.hasBomb(globals).peek()) {
+      console.log('[Bomb] no ability — pick up a 💩 first');
       return;
     }
     this.lastSpawnAt = now;
-    charges.value = charges.peek() - 1;
 
     const head = this.player.head;
     const headPos = new Vector3();
