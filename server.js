@@ -28,12 +28,17 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const gridState = new Map(); // "r,c" -> { type, icon, label, role }
 const users = new Map();     // userId -> { position: {x, z, heading}, spaceId }
 
-// Portal slider — lives on the server so every connecting client
-// (VR + broadcast) adopts the same scale on WELCOME. Clamped to the
-// same range the portal UI allows.
+// Portal sliders — live on the server so every connecting client
+// (VR + broadcast) adopts the same scales on WELCOME. Clamped to the
+// same ranges the portal UI allows.
+//   gridScale  — playable stage footprint
+//   emojiScale — every sprite + hitbox
 let gridScale = 0.8;
+let emojiScale = 1.0;
 const GRID_SCALE_MIN = 0.4;
 const GRID_SCALE_MAX = 1.2;
+const EMOJI_SCALE_MIN = 0.4;
+const EMOJI_SCALE_MAX = 2.0;
 
 // Round state. endsAt === 0 means no round in progress.
 // `pending` = portal has requested a round, waiting for a VR player to
@@ -199,6 +204,7 @@ wss.on('connection', (ws) => {
       : null,
     pendingRound: round.pending ? { duration: round.pendingDuration } : null,
     gridScale,
+    emojiScale,
   }));
 
   ws.on('message', (raw) => {
@@ -236,6 +242,15 @@ wss.on('connection', (ws) => {
         gridScale = Math.max(GRID_SCALE_MIN, Math.min(GRID_SCALE_MAX, s));
         console.log(`[grid] scale set to ${gridScale.toFixed(2)}`);
         broadcast({ type: 'SET_GRID_SCALE', scale: gridScale });
+        break;
+      }
+
+      case 'SET_EMOJI_SCALE': {
+        const s = Number(msg.scale);
+        if (!Number.isFinite(s)) break;
+        emojiScale = Math.max(EMOJI_SCALE_MIN, Math.min(EMOJI_SCALE_MAX, s));
+        console.log(`[emoji] scale set to ${emojiScale.toFixed(2)}`);
+        broadcast({ type: 'SET_EMOJI_SCALE', scale: emojiScale });
         break;
       }
 

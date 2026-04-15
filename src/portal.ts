@@ -51,6 +51,7 @@ import {
   boardHalfD,
   boardMinDim,
   currentGridScale,
+  currentEmojiScale,
   HAZARD_COOLDOWN_MS,
   BIRD_HP,
   BIRD_SPEED,
@@ -376,6 +377,25 @@ export class PortalSystem extends createSystem({}) {
     this.cleanupFuncs.push(
       GameState.gridScale(globals).subscribe(() => this.repositionOnScaleChange()),
     );
+    // Live emoji scale — resize each sprite's baseSize field in place.
+    // animateItems() reads baseSize every tick and writes sprite.scale,
+    // so updating the field is enough to make the change live.
+    this.cleanupFuncs.push(
+      GameState.emojiScale(globals).subscribe(() => this.resizeOnEmojiScaleChange()),
+    );
+  }
+
+  // Walk every sprite and scale its baseSize by the current emoji
+  // scale (the baseline is 1.1m). Walls are left alone — they're not
+  // emoji and player-relative obstacles.
+  private resizeOnEmojiScaleChange() {
+    const g = this.world.globals as Record<string, unknown>;
+    const scale = currentEmojiScale(g);
+    const baseline = 1.1;
+    for (const item of this.spawnedEntities.values()) {
+      if (item.kind !== 'sprite') continue;
+      item.baseSize = baseline * scale;
+    }
   }
 
   // Snap every spawned item to the cell center implied by its grid key
@@ -544,14 +564,22 @@ export class PortalSystem extends createSystem({}) {
   // and high up — the stock projectile radius would make them nearly
   // unhittable. Ground enemies use the incoming r2 as usual.
   private findEnemyAt(x: number, y: number, z: number, r2: number): string | null {
-    const birdR2 = BIRD_HIT_RADIUS * BIRD_HIT_RADIUS;
+    // Emoji scale also sizes the bird's effective hitbox — easier to
+    // hit a big eagle, harder to hit a tiny one.
+    const eScale = currentEmojiScale(this.world.globals as Record<string, unknown>);
+    const birdR  = BIRD_HIT_RADIUS * eScale;
+    const birdR2 = birdR * birdR;
+    // Ground-enemy radius (caller's r2) also scales — caller passes
+    // the nominal squared radius; we scale it by emojiScale² here so
+    // both projectile and sword paths see the same sized enemy.
+    const groundR2 = r2 * eScale * eScale;
     let bestKey: string | null = null;
     let bestScore = Infinity;
     for (const [key, item] of this.spawnedEntities) {
       const isEnemy = item.role === 'enemy';
       const isBird  = item.role === 'bird' && item.birdState === 'flying';
       if (!isEnemy && !isBird) continue;
-      const effectiveR2 = isBird ? birdR2 : r2;
+      const effectiveR2 = isBird ? birdR2 : groundR2;
 
       const dx = item.object3D.position.x - x;
       const dy = isBird ? item.object3D.position.y - y : 0;
@@ -638,10 +666,14 @@ export class PortalSystem extends createSystem({}) {
       case 'WELCOME':
         this.userId = msg.userId;
         console.log(`[GridSync] Joined as ${this.userId?.slice(0, 8)}`);
-        // Adopt the server's current grid scale BEFORE spawning items so
-        // spawnItem computes the correct cell positions on first render.
+        // Adopt the server's current scales BEFORE spawning items so
+        // spawnItem computes the correct cell positions + sprite sizes
+        // on first render.
         if (typeof msg.gridScale === 'number') {
           GameState.gridScale(this.world.globals as Record<string, unknown>).value = msg.gridScale;
+        }
+        if (typeof msg.emojiScale === 'number') {
+          GameState.emojiScale(this.world.globals as Record<string, unknown>).value = msg.emojiScale;
         }
         for (const key of [...this.spawnedEntities.keys()]) this.despawnItem(key);
         for (const [key, item] of Object.entries(msg.grid as Record<string, any>)) {
@@ -761,6 +793,15 @@ export class PortalSystem extends createSystem({}) {
         // repositionOnScaleChange subscription set up in init().
         if (typeof msg.scale === 'number') {
           GameState.gridScale(this.world.globals as Record<string, unknown>).value = msg.scale;
+        }
+        break;
+      }
+
+      case 'SET_EMOJI_SCALE': {
+        // Triggers resizeOnEmojiScaleChange() to update every sprite's
+        // baseSize. Hitbox reads pull the live signal each frame.
+        if (typeof msg.scale === 'number') {
+          GameState.emojiScale(this.world.globals as Record<string, unknown>).value = msg.scale;
         }
         break;
       }
@@ -920,7 +961,9 @@ export class PortalSystem extends createSystem({}) {
     // pickups still pick up after you re-deploy the palette.
     let role: ItemRole = item.role ?? 'decor';
     if (role === 'decor') role = roleFromType(type);
-    const baseSize = 1.1;
+    // baseSize follows the live emoji-scale slider — sprite.scale is
+    // kept in sync later via the emojiScale signal subscription too.
+    const baseSize = 1.1 * currentEmojiScale(g);
 
     // 🟦 cubes and 🟫 wood both render as 3D wall-shaped blocks. Cubes
     // are invincible; wood breaks after WOOD_HP sword swings. They share
@@ -1105,9 +1148,16 @@ export class PortalSystem extends createSystem({}) {
     if (this.isDead.peek()) return;
     this.player.head.getWorldPosition(this.tempPos);
 
-    const pickupR2 = PICKUP_RADIUS * PICKUP_RADIUS;
-    const fireR2   = FIRE_RADIUS   * FIRE_RADIUS;
-    const enemyR2  = ENEMY_DAMAGE_RADIUS * ENEMY_DAMAGE_RADIUS;
+    // Hitboxes scale with the emoji size so a 2× bigger skull hits
+    // you from 2× further out (and a 2× bigger pickup is easier to
+    // grab). Keeps visual + functional size in sync.
+    const eScale = currentEmojiScale(this.world.globals as Record<string, unknown>);
+    const pickupR  = PICKUP_RADIUS       * eScale;
+    const fireR    = FIRE_RADIUS         * eScale;
+    const enemyR   = ENEMY_DAMAGE_RADIUS * eScale;
+    const pickupR2 = pickupR * pickupR;
+    const fireR2   = fireR   * fireR;
+    const enemyR2  = enemyR  * enemyR;
 
     const hittable = performance.now() >= this.damageCooldownUntil;
     const headX = this.tempPos.x, headZ = this.tempPos.z;
@@ -1481,7 +1531,11 @@ export class PortalSystem extends createSystem({}) {
 
     if (speed < SWORD_MIN_SPEED) return;
 
-    const swordR2 = SWORD_RADIUS * SWORD_RADIUS;
+    // Scale sword hit radius with emoji size so a bigger enemy is
+    // hittable from proportionally further out.
+    const eScale = currentEmojiScale(this.world.globals as Record<string, unknown>);
+    const swordR = SWORD_RADIUS * eScale;
+    const swordR2 = swordR * swordR;
     const now = performance.now();
     const leftPad = this.input.gamepads.left;
 

@@ -666,9 +666,14 @@
         <div class="timer-display" id="timer-display">00:30</div>
       </div>
       <label class="grid-scale-label" title="Shrinks the playable stage so it fits a Quest room boundary. Emoji/pickup sprites stay the same size.">
-        Stage size
+        Stage
         <input type="range" id="grid-scale" min="0.4" max="1.2" step="0.05" value="0.8" />
         <span id="grid-scale-value" class="grid-scale-value">0.80×</span>
+      </label>
+      <label class="grid-scale-label" title="Scales every emoji sprite AND its hitbox (pickup, sword, enemy touch, bird). Doesn't affect the stage.">
+        Emoji
+        <input type="range" id="emoji-scale" min="0.4" max="2.0" step="0.05" value="1.0" />
+        <span id="emoji-scale-value" class="grid-scale-value">1.00×</span>
       </label>
       <div class="header-actions">
         <button class="btn btn-ghost" id="clear-btn">Clear</button>
@@ -845,6 +850,7 @@
               }
               syncGrids();
               if (typeof msg.gridScale === 'number') reflectGridScale(msg.gridScale);
+              if (typeof msg.emojiScale === 'number') reflectEmojiScale(msg.emojiScale);
               // Adopt any in-progress or pending round from the snapshot.
               if (msg.round && msg.round.endsAt > Date.now()) {
                 roundEndsAt = msg.round.endsAt;
@@ -896,6 +902,10 @@
               // Server echoes the clamped value — reflect it in the UI
               // so the slider snaps if the operator dragged out of range.
               if (typeof msg.scale === 'number') reflectGridScale(msg.scale);
+              break;
+
+            case 'SET_EMOJI_SCALE':
+              if (typeof msg.scale === 'number') reflectEmojiScale(msg.scale);
               break;
 
             case 'USER_JOIN':
@@ -1467,6 +1477,21 @@
         const scale = parseFloat(gridScaleEl.value);
         gridScaleValueEl.textContent = scale.toFixed(2) + '×';
         wsSend({ type: 'SET_GRID_SCALE', scale });
+      });
+
+      // ── Emoji-size slider ──────────────────────────────────
+      // Grows/shrinks every sprite AND its hitbox together. Doesn't
+      // affect the stage footprint — only how "big" the items feel.
+      const emojiScaleEl = document.getElementById('emoji-scale');
+      const emojiScaleValueEl = document.getElementById('emoji-scale-value');
+      function reflectEmojiScale(scale) {
+        emojiScaleEl.value = String(scale);
+        emojiScaleValueEl.textContent = scale.toFixed(2) + '×';
+      }
+      emojiScaleEl.addEventListener('input', () => {
+        const scale = parseFloat(emojiScaleEl.value);
+        emojiScaleValueEl.textContent = scale.toFixed(2) + '×';
+        wsSend({ type: 'SET_EMOJI_SCALE', scale });
       });
 
       // Toast popup for validation messages — single global element reused
