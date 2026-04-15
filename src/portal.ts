@@ -415,7 +415,12 @@ export class PortalSystem extends createSystem({}) {
       // on preview/active state, sprites already sit at y from gridToWorld
       // (we just wrote it), birds are airborne.
       if (item.kind === 'wall') {
-        // Re-run wall placement so it re-reads origin + current round state.
+        // Walls fill their cell — resize X/Z to the new gridScale so
+        // adjacent walls keep their "one per cell" look. setWallState
+        // re-reads origin and only writes Y scale, leaving X/Z alone.
+        const mesh = item.object3D as Mesh;
+        mesh.scale.x = scale;
+        mesh.scale.z = scale;
         this.setWallState(item, this.roundRunning.peek());
       }
       if (item.extra) {
@@ -979,6 +984,12 @@ export class PortalSystem extends createSystem({}) {
           metalness: isWood ? 0 : 0.1,
         }),
       );
+      // Walls fill their cell — scale X/Z with gridScale so shrinking
+      // the stage shrinks the footprint of each wall too. Y is handled
+      // by setWallState (preview vs active height), so don't touch it.
+      const gScale = currentGridScale(g);
+      wall.scale.x = gScale;
+      wall.scale.z = gScale;
       const entity = this.world.createTransformEntity(wall);
       this.spawnedEntities.set(key, {
         entity,
@@ -1304,22 +1315,27 @@ export class PortalSystem extends createSystem({}) {
   // Dead players are excluded from chase targets so a downed player
   // doesn't keep enemies glued to them.
   private tickEnemyAI(deltaSeconds: number, time: number) {
+    // Cache board bounds + scale once per tick — cheap signal peeks.
+    const g = this.world.globals as Record<string, unknown>;
+    const halfW = boardHalfW(g);
+    const halfD = boardHalfD(g);
+    const gScale = currentGridScale(g);
+
     // Walls are static — gather once per tick.
     const walls: { x: number; z: number }[] = [];
     for (const item of this.spawnedEntities.values()) {
       if (item.kind === 'wall') walls.push({ x: item.origin[0], z: item.origin[2] });
     }
-    const blockR = WALL_CELL_HALF + 0.18; // wall half + enemy half
+    // Walls scale with gridScale; avoidance half-extent scales too so
+    // enemies don't walk through visibly-smaller walls or clip into
+    // visibly-larger ones.
+    const blockR = WALL_CELL_HALF * gScale + 0.18;
     const hitsWall = (x: number, z: number): boolean => {
       for (const w of walls) {
         if (Math.abs(x - w.x) < blockR && Math.abs(z - w.z) < blockR) return true;
       }
       return false;
     };
-    // Cache board bounds once per tick — cheap signal peek.
-    const g = this.world.globals as Record<string, unknown>;
-    const halfW = boardHalfW(g);
-    const halfD = boardHalfD(g);
 
     // Live targets — ghosts still chase, others don't care.
     const targets: { x: number; z: number }[] = [];
