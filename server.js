@@ -28,6 +28,13 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const gridState = new Map(); // "r,c" -> { type, icon, label, role }
 const users = new Map();     // userId -> { position: {x, z, heading}, spaceId }
 
+// Portal slider — lives on the server so every connecting client
+// (VR + broadcast) adopts the same scale on WELCOME. Clamped to the
+// same range the portal UI allows.
+let gridScale = 0.8;
+const GRID_SCALE_MIN = 0.4;
+const GRID_SCALE_MAX = 1.2;
+
 // Round state. endsAt === 0 means no round in progress.
 // `pending` = portal has requested a round, waiting for a VR player to
 // confirm readiness at the chair. Actual timer doesn't start until then.
@@ -191,6 +198,7 @@ wss.on('connection', (ws) => {
       ? { endsAt: round.endsAt, duration: round.duration }
       : null,
     pendingRound: round.pending ? { duration: round.pendingDuration } : null,
+    gridScale,
   }));
 
   ws.on('message', (raw) => {
@@ -219,6 +227,17 @@ wss.on('connection', (ws) => {
         // and not part of the persistent grid layout.
         broadcast({ type: 'ITEM_STATES', items: msg.items }, ws);
         break;
+
+      case 'SET_GRID_SCALE': {
+        // Portal slider. Clamp + store + broadcast to every client
+        // (including sender so the slider snaps to the clamped value).
+        const s = Number(msg.scale);
+        if (!Number.isFinite(s)) break;
+        gridScale = Math.max(GRID_SCALE_MIN, Math.min(GRID_SCALE_MAX, s));
+        console.log(`[grid] scale set to ${gridScale.toFixed(2)}`);
+        broadcast({ type: 'SET_GRID_SCALE', scale: gridScale });
+        break;
+      }
 
       case 'ROUND_START':
         // Legacy — straight-to-start path (kept for any client that

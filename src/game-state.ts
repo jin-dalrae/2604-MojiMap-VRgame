@@ -121,14 +121,30 @@ export const GUN_COOLDOWN_MS = 220;     // rate-limit trigger spam
 // after the portal requests a round, before the round actually starts.
 export const CHAIR_READY_RADIUS = 0.9; // meters — close enough to the chair
 
-// Game space footprint (matches the grid drawn in src/index.ts: 20×10
-// cells at 1m each). Robots bounce off these edges when random-walking.
-export const BOARD_HALF_W = 10;   // x: [-10, +10]
-export const BOARD_HALF_D = 5;    // z: [-5, +5]
-// Skull circle radii are capped at the smaller play-space dimension —
-// the user asked for "not longer than the smaller width of the game
-// space" so the circle has a chance of staying near the board.
-export const BOARD_MIN_DIM = Math.min(BOARD_HALF_W * 2, BOARD_HALF_D * 2);
+// Grid scale — the playable stage shrinks by this factor so the
+// board fits inside a Quest room-scale boundary. Cell positions and
+// the visible grid/floor scale with this, but walls + pickup sprites
+// keep their real-world size so they still feel human-scale. This is
+// a runtime signal (portal page exposes a slider) so tuning doesn't
+// require a reload. 0.8 is the "slightly smaller than a full room"
+// default that fits a typical Quest guardian.
+export const GRID_SCALE_DEFAULT = 0.8;
+export const GRID_SCALE_MIN = 0.4;
+export const GRID_SCALE_MAX = 1.2;
+
+// The grid coverage itself (20 cols × 10 rows) doesn't change — only
+// the per-cell size does. Helpers read the current scale signal so
+// every consumer stays in sync with the slider.
+export function currentGridScale(g: Globals): number {
+  return GameState.gridScale(g).peek();
+}
+export function boardHalfW(g: Globals): number { return 10 * currentGridScale(g); }
+export function boardHalfD(g: Globals): number { return  5 * currentGridScale(g); }
+// Skull circle radii cap at the smaller play-space dimension so the
+// orbit at least has a chance of staying on the board.
+export function boardMinDim(g: Globals): number {
+  return Math.min(boardHalfW(g) * 2, boardHalfD(g) * 2);
+}
 
 // Hit cooldown — after taking damage the player is invulnerable for
 // this long and the red flash / oof cue doesn't retrigger.
@@ -281,6 +297,9 @@ export const GameState = {
   // True on the broadcast (spectator) page. PortalSystem and friends
   // gate their gameplay ticks on this — spectator only renders.
   isSpectator:    (g: Globals) => getOrInit<boolean>(g, "isSpectator", false),
+  // Live grid scale — portal.html slider writes here (via WS + server
+  // relay). PortalSystem + the stage meshes subscribe and rebuild.
+  gridScale:      (g: Globals) => getOrInit<number>(g, "gridScale", GRID_SCALE_DEFAULT),
 };
 
 // Per-user live stats, exposed on globals so the spectator HUD can

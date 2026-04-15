@@ -97,9 +97,19 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     scene.add(sun);
   }
 
-  // ── Grid Floor (20 cols × 10 rows, 1m square cells) ───────
-  {
-    const cols = 20, rows = 10, cell = 1;
+  // Stage geometry (grid lines + visible floor) rebuilds any time the
+  // gridScale signal flips. Signal subscribe() fires immediately with
+  // the current value, so the first call here also handles the initial
+  // build — no separate bootstrap required.
+  let stageEntities: Array<{ dispose: () => void }> = [];
+  GameState.gridScale(globals).subscribe((scale) => {
+    for (const e of stageEntities) {
+      try { e.dispose(); } catch {}
+    }
+    stageEntities = [];
+
+    // ── Grid Floor (20 cols × 10 rows, scaled cells) ───────────
+    const cols = 20, rows = 10, cell = scale;
     const halfW = (cols * cell) / 2;
     const halfD = (rows * cell) / 2;
     const verts: number[] = [];
@@ -113,30 +123,31 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     }
     const geo = new BufferGeometry();
     geo.setAttribute("position", new Float32BufferAttribute(verts, 3));
-    const mat = new LineBasicMaterial({
+    const lineMat = new LineBasicMaterial({
       color: 0x6366f1,
       transparent: true,
       opacity: 0.8,
     });
-    const gridLines = new LineSegments(geo, mat);
+    const gridLines = new LineSegments(geo, lineMat);
     gridLines.position.y = 0.01;
-    world.createTransformEntity(gridLines);
-  }
+    stageEntities.push(world.createTransformEntity(gridLines));
 
-  // Visible floor under the grid — same on both pages, including
-  // LocomotionEnvironment so we don't change the scene composition.
-  const floorGeom = new PlaneGeometry(20, 10);
-  floorGeom.rotateX(-Math.PI / 2);
-  const floorMat = new MeshStandardMaterial({
-    color: 0x09090b,
-    transparent: true,
-    opacity: 0.35,
-    roughness: 1.0,
+    // Visible floor sized to match the scaled grid.
+    const floorGeom = new PlaneGeometry(20 * scale, 10 * scale);
+    floorGeom.rotateX(-Math.PI / 2);
+    const floorMat = new MeshStandardMaterial({
+      color: 0x09090b,
+      transparent: true,
+      opacity: 0.35,
+      roughness: 1.0,
+    });
+    const floorMesh = new Mesh(floorGeom, floorMat);
+    const floorEntity = world.createTransformEntity(floorMesh);
+    floorEntity.addComponent(LocomotionEnvironment, {
+      type: EnvironmentType.STATIC,
+    });
+    stageEntities.push(floorEntity);
   });
-  const floorMesh = new Mesh(floorGeom, floorMat);
-  world
-    .createTransformEntity(floorMesh)
-    .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
 
   // Invisible safety floor — same on both pages. Spectator doesn't
   // walk on it but leaving it in keeps the scene identical.

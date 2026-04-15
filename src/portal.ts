@@ -47,9 +47,10 @@ import {
   SWORD_KNOCKBACK_MS,
   CHAIR_READY_RADIUS,
   WALL_CELL_HALF,
-  BOARD_HALF_W,
-  BOARD_HALF_D,
-  BOARD_MIN_DIM,
+  boardHalfW,
+  boardHalfD,
+  boardMinDim,
+  currentGridScale,
   HAZARD_COOLDOWN_MS,
   BIRD_HP,
   BIRD_SPEED,
@@ -73,11 +74,18 @@ import {
 } from "./game-state.js";
 
 // ── Grid coordinate mapping ──────────────────────────────────
-// Portal grid: 20 cols × 10 rows
-// Cell (row r, col c) center → world: x = c - 9.5, z = r - 4.5.
-// y is chosen so the billboarded sprite hovers just above the grid floor.
-function gridToWorld(row: number, col: number): [number, number, number] {
-  return [col - 9.5, 0.55, row - 4.5];
+// Portal grid: 20 cols × 10 rows, cells scaled by the live gridScale
+// signal so the play area fits a Quest room boundary (portal slider
+// drives it). Cell centers → world:
+//   x = (col - 9.5) * scale, z = (row - 4.5) * scale.
+// y stays fixed at 0.55m so billboards hover at a human-friendly
+// height regardless of cell scale.
+function gridToWorld(
+  row: number,
+  col: number,
+  scale: number,
+): [number, number, number] {
+  return [(col - 9.5) * scale, 0.55, (row - 4.5) * scale];
 }
 
 // Backfill a role for legacy items whose stored `role` is 'decor'.
@@ -361,6 +369,41 @@ export class PortalSystem extends createSystem({}) {
         }
       }),
     );
+
+    // Live grid scale — portal slider writes this over the WS. When it
+    // flips, reposition every already-spawned item so walls/chair/etc.
+    // slide to their new cell centers without a full respawn.
+    this.cleanupFuncs.push(
+      GameState.gridScale(globals).subscribe(() => this.repositionOnScaleChange()),
+    );
+  }
+
+  // Snap every spawned item to the cell center implied by its grid key
+  // and the current grid scale. Called on gridScale signal change. Items
+  // with dynamic y (birds in flight, wall idle-vs-active heights) keep
+  // their current y — only x/z shift with the scale.
+  private repositionOnScaleChange() {
+    const g = this.world.globals as Record<string, unknown>;
+    const scale = currentGridScale(g);
+    for (const [key, item] of this.spawnedEntities.entries()) {
+      const [row, col] = key.split(',').map(Number);
+      const [x, y, z] = gridToWorld(row, col, scale);
+      item.origin = [x, y, z];
+      item.object3D.position.x = x;
+      item.object3D.position.z = z;
+      // Keep each item's current y — walls pick their own height based
+      // on preview/active state, sprites already sit at y from gridToWorld
+      // (we just wrote it), birds are airborne.
+      if (item.kind === 'wall') {
+        // Re-run wall placement so it re-reads origin + current round state.
+        this.setWallState(item, this.roundRunning.peek());
+      }
+      if (item.extra) {
+        // Chair beacon pillar follows the chair.
+        item.extra.position.x = x;
+        item.extra.position.z = z;
+      }
+    }
   }
 
   // Toggle a single wall between preview (flat + walk-through) and
@@ -595,6 +638,11 @@ export class PortalSystem extends createSystem({}) {
       case 'WELCOME':
         this.userId = msg.userId;
         console.log(`[GridSync] Joined as ${this.userId?.slice(0, 8)}`);
+        // Adopt the server's current grid scale BEFORE spawning items so
+        // spawnItem computes the correct cell positions on first render.
+        if (typeof msg.gridScale === 'number') {
+          GameState.gridScale(this.world.globals as Record<string, unknown>).value = msg.gridScale;
+        }
         for (const key of [...this.spawnedEntities.keys()]) this.despawnItem(key);
         for (const [key, item] of Object.entries(msg.grid as Record<string, any>)) {
           this.spawnItem(key, item);
@@ -707,6 +755,15 @@ export class PortalSystem extends createSystem({}) {
       case 'GRID_CLEAR_ALL':
         for (const key of [...this.spawnedEntities.keys()]) this.despawnItem(key);
         break;
+
+      case 'SET_GRID_SCALE': {
+        // Portal slider → server → us. Writing the signal triggers the
+        // repositionOnScaleChange subscription set up in init().
+        if (typeof msg.scale === 'number') {
+          GameState.gridScale(this.world.globals as Record<string, unknown>).value = msg.scale;
+        }
+        break;
+      }
 
       case 'USER_JOIN':
         if (msg.userId !== this.userId) this.updateAvatar(msg.userId, msg.position);
@@ -853,7 +910,8 @@ export class PortalSystem extends createSystem({}) {
     item: { type: string; icon: string; role?: ItemRole },
   ) {
     const [row, col] = key.split(',').map(Number);
-    const [x, y, z] = gridToWorld(row, col);
+    const g = this.world.globals as Record<string, unknown>;
+    const [x, y, z] = gridToWorld(row, col, currentGridScale(g));
 
     const type = item.type ?? 'decor';
     // Role normally arrives baked into the item (the portal stamps it
@@ -916,7 +974,7 @@ export class PortalSystem extends createSystem({}) {
     if (type === 'robot') {
       heading = Math.random() * Math.PI * 2;
     } else if (type === 'skull') {
-      radius = 1 + Math.random() * (BOARD_MIN_DIM - 1);
+      radius = 1 + Math.random() * (boardMinDim(g) - 1);
       omega = (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.8);
       phase = Math.random() * Math.PI * 2;
     } else if (role === 'bird') {
@@ -1208,6 +1266,10 @@ export class PortalSystem extends createSystem({}) {
       }
       return false;
     };
+    // Cache board bounds once per tick — cheap signal peek.
+    const g = this.world.globals as Record<string, unknown>;
+    const halfW = boardHalfW(g);
+    const halfD = boardHalfD(g);
 
     // Live targets — ghosts still chase, others don't care.
     const targets: { x: number; z: number }[] = [];
@@ -1256,8 +1318,8 @@ export class PortalSystem extends createSystem({}) {
         const nx = pos.x + Math.cos(item.heading) * step;
         const nz = pos.z + Math.sin(item.heading) * step;
         const outOfBounds =
-          nx < -BOARD_HALF_W || nx > BOARD_HALF_W ||
-          nz < -BOARD_HALF_D || nz > BOARD_HALF_D;
+          nx < -halfW || nx > halfW ||
+          nz < -halfD || nz > halfD;
         if (outOfBounds || hitsWall(nx, nz)) {
           item.heading = Math.random() * Math.PI * 2;
         } else {
