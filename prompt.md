@@ -504,3 +504,27 @@ which has the best ux, and gets a stream, and works when this is hostsed and not
 ```
 make an md in a devlog about this, and teh other thing we discussed about syncign the onlnie state like call of duty mobile. i wnat to be able to revisit these options later. push everything we have to the master site, teh railway the vercel the github.
 ```
+
+## 2026-04-15T07:20:00Z
+
+```
+the issue now is, the grid doesn't fit in the meta quest's max area you can walk around in, so can you scale down the grid in the vr area by 20% relative to the user, so 20% smaller than it currently is, the grid only, the emoji can stay the same size relative to the user. make sense?
+```
+
+## 2026-04-15T07:35:00Z
+
+```
+ok, cool, is tehre a setting where i can just set that size? like a slider? maybe an option in the game? that would be really cool. (keep the emoji a constant size though)
+```
+
+## 2026-04-15T07:40:00Z
+
+```
+lets have these controls in the portal only
+```
+
+## 2026-04-15T07:55:00Z
+
+```
+also make it so i can scale the emoji size on a separate area too (that includes hitbox) and when you are finished with this, upload it to the web on master and make sure it is deployed and same wiht railway and wahtever you need to do.
+```
