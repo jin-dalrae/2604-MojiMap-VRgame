@@ -79,8 +79,8 @@
         overflow: auto; /* Allow both horizontal and vertical scroll */
         padding: 20px;
         display: flex;
-        align-items: center;
-        justify-content: center;
+        align-items: flex-start;
+        justify-content: flex-start;
         -webkit-overflow-scrolling: touch;
       }
 
@@ -417,8 +417,8 @@
         }
         // Conversion: col c -> x = c - 9.5. So c = x + 9.5
         const col = pos.x + 9.5, row = pos.z + 4.5;
-        p.style.left = (col * 54 + 27) + 'px'; // cell size 50 + gap 4
-        p.style.top = (row * 54 + 27) + 'px';
+        p.style.left = (20 + col * 50) + 'px'; // 20px label + col * 50px
+        p.style.top = (20 + row * 50) + 'px'; // 20px label + row * 50px
       }
 
       const timerEl = document.getElementById('timer-display');
