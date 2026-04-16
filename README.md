@@ -96,6 +96,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## Team
 
-**Rae** • **Yoyo** • **Ted**
+**Rae** • **Yoyo** • **Ted** • **Shola**
 
 Built with [IWSDK](https://iwsdk.dev).
