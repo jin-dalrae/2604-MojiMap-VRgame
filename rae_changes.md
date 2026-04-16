@@ -88,6 +88,22 @@ Merged Ted's game systems into `rae_apr16` while preserving Rae's custom feature
 
 ---
 
+### 5. Dedicated Mobile Portal (/portal-mobile)
+
+Created a separate mobile-optimized experience for phone/tablet attackers:
+
+- **New Route**: `/portal-mobile` served via `portal-mobile.html`.
+- **UI Reorganization**: 
+  - Palette moved to the bottom as a horizontal scrollable strip.
+  - Grid area optimized with horizontal scrolling support.
+  - Large 50px cells for precise tapping on small screens.
+- **Improved UX**:
+  - Touch-optimized item selection and cell tapping.
+  - Direct "Start" button and countdown timer in the header.
+  - Removal of desktop-only elements for performance and clarity.
+
+---
+
 ### Files Changed
 
 | File | Status | Description |
@@ -95,6 +111,9 @@ Merged Ted's game systems into `rae_apr16` while preserving Rae's custom feature
 | `README.md` | Modified | Added game rules, grid components, systems documentation |
 | `src/index.ts` | Modified | GlitchFloorSystem + Ted's game systems + scalable glitch floor |
 | `src/portal.ts` | Modified | 3D neon models (kind='model') + Ted's full game logic |
+| `portal-mobile.html` | **New** | Dedicated mobile-optimized attacker portal |
+| `vite.config.ts` | Modified | Added `portal-mobile` entry point |
+| `server.js` | Modified | Added `/portal-mobile` route handler |
 | `src/glitch-floor.ts` | **New** | Cyberpunk shader material and animation system |
 | `src/grid-items.ts` | **New** | 3D model factory for all 13 grid item types |
 | `src/weapon-system.ts` | **New** (from Ted) | Sword attack mechanics |
@@ -105,7 +124,6 @@ Merged Ted's game systems into `rae_apr16` while preserving Rae's custom feature
 | `src/game-state.ts` | **New** (from Ted) | Game state management |
 | `src/game-fx.ts` | **New** (from Ted) | Visual FX utilities |
 | `src/broadcast-entry.ts` | **Deleted** | Merged into index.ts |
-| `server.js` | Modified | Removed OpenAI, kept round/grid sync |
 | `Dockerfile` | Modified | Cloud Run (Node 20, port 8080) |
 | `portal.html` | Modified | Rae's WS URL |
 | `puppet.html` | Modified | Rae's WS URL |
@@ -116,4 +134,5 @@ Merged Ted's game systems into `rae_apr16` while preserving Rae's custom feature
 
 1. `ae9f99c` — Docs: Add game rules and win conditions
 2. `357437e` — Add glitch/cyberpunk shader for grid floor
-3. *(this commit)* — Merge origin/ted + re-integrate neon models & glitch floor
+3. `7e13cc5` — Merge origin/ted + re-integrate neon models & glitch floor
+4. *(pending)* — Add dedicated /portal-mobile route and mobile-optimized UI

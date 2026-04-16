@@ -18,6 +18,12 @@
 
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { networkInterfaces } from 'os';
 import { randomUUID } from 'crypto';
 
@@ -121,6 +127,17 @@ server.on('request', async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
     return;
+  }
+
+  if (req.url === '/portal-mobile' || req.url === '/portal-mobile.html') {
+    try {
+      const content = fs.readFileSync(path.join(__dirname, 'portal-mobile.html'), 'utf-8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(content);
+      return;
+    } catch (e) {
+      console.error('Failed to serve portal-mobile.html', e);
+    }
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });

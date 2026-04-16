@@ -1,0 +1,388 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>MojiMap Mobile</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --bg: #09090b;
+        --surface: #111113;
+        --surface2: #18181b;
+        --border: #27272a;
+        --accent: #6366f1;
+        --accent-dim: rgba(99,102,241,0.15);
+        --text: #fafafa;
+        --muted: #71717a;
+        --cell-bg: #16161a;
+        --cell-alt: #18181d;
+        --cell-border: #222226;
+        --success: #10b981;
+        --cell-size: 50px; /* Large cells for mobile tapping */
+      }
+
+      html, body {
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100dvh;
+      }
+
+      /* ── Header ── */
+      header {
+        height: 50px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 0 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+        z-index: 100;
+      }
+
+      h1 { font-size: 14px; color: var(--accent); }
+
+      .timer-display {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .timer-display.running { color: var(--success); }
+      .timer-display.warning { color: #f59e0b; }
+      .timer-display.critical { color: #ef4444; }
+
+      .btn {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+      }
+      .btn-primary { background: var(--accent); color: #fff; }
+      .btn-primary.running { background: #ef4444; }
+
+      /* ── Grid Area (Scrollable) ── */
+      .grid-container {
+        flex: 1;
+        overflow: auto; /* Allow both horizontal and vertical scroll */
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .grid-board {
+        position: relative;
+        background: #0d0d10;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(20, var(--cell-size));
+        grid-template-rows: repeat(10, var(--cell-size));
+        gap: 4px;
+      }
+
+      .cell {
+        width: var(--cell-size);
+        height: var(--cell-size);
+        background: var(--cell-bg);
+        border: 1px solid var(--cell-border);
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        position: relative;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .cell.alt { background: var(--cell-alt); }
+      .cell.tap-target { border-color: var(--accent); background: var(--accent-dim); }
+      
+      .remove-x {
+        position: absolute;
+        top: -6px; right: -6px;
+        width: 18px; height: 18px;
+        background: #ef4444;
+        color: #fff;
+        border-radius: 50%;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        z-index: 10;
+      }
+      .cell.show-remove .remove-x { display: flex; }
+
+      /* ── Palette (Bottom) ── */
+      .palette {
+        height: 80px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-shrink: 0;
+      }
+
+      .palette::-webkit-scrollbar { display: none; }
+
+      .item {
+        flex: 0 0 auto;
+        width: 60px;
+        height: 60px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        transition: border-color 0.1s;
+      }
+
+      .item.selected {
+        border-color: var(--accent);
+        background: var(--accent-dim);
+      }
+
+      .item-icon { font-size: 24px; }
+      .item-label { font-size: 9px; color: var(--muted); }
+      .item.selected .item-label { color: #a5b4fc; }
+
+      /* ── Player Layer ── */
+      .players-layer { position: absolute; inset: 0; pointer-events: none; }
+      .player-dot {
+        position: absolute;
+        width: 12px; height: 12px;
+        background: var(--pcolor, #6366f1);
+        border: 2px solid #fff;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 10px var(--pcolor-glow);
+        transition: left 0.1s, top 0.1s;
+      }
+
+      /* ── Toast ── */
+      .toast {
+        position: fixed;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: rgba(0,0,0,0.9);
+        border: 1px solid var(--border);
+        color: #fff;
+        padding: 10px 20px;
+        border-radius: 20px;
+        font-size: 13px;
+        opacity: 0;
+        transition: all 0.3s;
+        pointer-events: none;
+        z-index: 1000;
+      }
+      .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+      /* ── Banner ── */
+      .banner {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.8);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        padding: 20px;
+      }
+      .banner.show { display: flex; }
+      .banner-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        padding: 30px;
+        border-radius: 12px;
+        text-align: center;
+        width: 100%;
+        max-width: 300px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>MojiMap</h1>
+      <div class="timer-display" id="timer-display">00:30</div>
+      <button class="btn btn-primary" id="start-round-btn">Start</button>
+    </header>
+
+    <div class="grid-container">
+      <div class="grid-board">
+        <div class="grid" id="grid"></div>
+        <div class="players-layer" id="players"></div>
+      </div>
+    </div>
+
+    <div class="palette" id="palette">
+      <!-- Items will be injected for brevity or kept static -->
+      <div class="item" data-type="sword" data-icon="🗡️" data-label="Sword"><span class="item-icon">🗡️</span><span class="item-label">Sword</span></div>
+      <div class="item" data-type="gun" data-icon="🔫" data-label="Squirt"><span class="item-icon">🔫</span><span class="item-label">Squirt</span></div>
+      <div class="item" data-type="star" data-icon="⭐" data-label="Star"><span class="item-icon">⭐</span><span class="item-label">Star</span></div>
+      <div class="item" data-type="bird" data-icon="🦅" data-label="Eagle"><span class="item-icon">🦅</span><span class="item-label">Eagle</span></div>
+      <div class="item" data-type="fire" data-icon="🔥" data-label="Fire"><span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
+      <div class="item" data-type="robot" data-icon="🤖" data-label="Robot"><span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+      <div class="item" data-type="cube" data-icon="🟦" data-label="Wall"><span class="item-icon">🟦</span><span class="item-label">Wall</span></div>
+      <div class="item" data-type="chair" data-icon="🪑" data-label="Start Pt"><span class="item-icon">🪑</span><span class="item-label">Start Pt</span></div>
+      <div class="item" data-type="skull" data-icon="💀" data-label="Skull"><span class="item-icon">💀</span><span class="item-label">Skull</span></div>
+      <div class="item" data-type="ghost" data-icon="👻" data-label="Ghost"><span class="item-icon">👻</span><span class="item-label">Ghost</span></div>
+    </div>
+
+    <div class="banner" id="banner">
+      <div class="banner-card">
+        <h2 id="banner-reason">VICTORY</h2>
+        <div id="banner-winner" style="margin: 15px 0; font-weight: bold;"></div>
+        <p style="font-size: 11px; color: var(--muted);">Tap to dismiss</p>
+      </div>
+    </div>
+
+    <script>
+      const COLS = 20, ROWS = 10;
+      const ROLE_BY_ICON = {
+        '🗡️': 'weapon-sword', '🔫': 'weapon-gun', '⭐': 'goal', '🦅': 'bird',
+        '🔥': 'obstacle-damage', '🤖': 'enemy', '👻': 'enemy', '💀': 'enemy',
+        '🪑': 'spawn'
+      };
+      function roleFor(icon) { return ROLE_BY_ICON[icon] || 'decor'; }
+
+      const WS_URL = location.hostname === 'localhost' ? 'ws://localhost:3001' : 'wss://questproto-725835663363.us-west1.run.app';
+      let ws = null, wsReady = false, myUserId = null;
+      const state = new Map(), players = new Map();
+      let selectedItem = null, roundEndsAt = 0;
+
+      function wsSend(msg) { if (wsReady) ws.send(JSON.stringify(msg)); }
+
+      function connectWS() {
+        ws = new WebSocket(WS_URL);
+        ws.onopen = () => { wsReady = true; };
+        ws.onclose = () => { wsReady = false; setTimeout(connectWS, 2000); };
+        ws.onmessage = (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'WELCOME') {
+            myUserId = msg.userId; state.clear();
+            Object.entries(msg.grid).forEach(([k,v]) => state.set(k,v));
+            syncGrid();
+          } else if (msg.type === 'GRID_UPDATE') { state.set(msg.key, msg.item); syncGrid(); }
+          else if (msg.type === 'GRID_CLEAR') { state.delete(msg.key); syncGrid(); }
+          else if (msg.type === 'GRID_CLEAR_ALL') { state.clear(); syncGrid(); }
+          else if (msg.type === 'PLAYER_POSITION') { updatePlayer(msg.userId, msg.position); }
+          else if (msg.type === 'ROUND_START') { roundEndsAt = msg.endsAt; startTick(); }
+          else if (msg.type === 'ROUND_END') { roundEndsAt = 0; showBanner(msg.reason); }
+        };
+      }
+
+      function syncGrid() {
+        document.querySelectorAll('.cell').forEach(cell => {
+          const key = `${cell.dataset.r},${cell.dataset.c}`;
+          const item = state.get(key);
+          cell.innerHTML = ''; cell.classList.remove('occupied', 'show-remove');
+          if (item) {
+            cell.classList.add('occupied');
+            cell.textContent = item.icon;
+            const x = document.createElement('div'); x.className = 'remove-x'; x.textContent = '×';
+            x.onclick = (e) => { e.stopPropagation(); clearCell(key); };
+            cell.appendChild(x);
+          }
+        });
+      }
+
+      function placeItem(key, item) {
+        const withRole = { ...item, role: roleFor(item.icon) };
+        state.set(key, withRole); syncGrid();
+        wsSend({ type: 'GRID_PLACE', key, item: withRole });
+      }
+      function clearCell(key) { state.delete(key); syncGrid(); wsSend({ type: 'GRID_CLEAR', key }); }
+
+      const gridEl = document.getElementById('grid');
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell' + ((r+c)%2 ? ' alt' : '');
+          cell.dataset.r = r; cell.dataset.c = c;
+          cell.onclick = function() {
+            const key = `${r},${c}`;
+            if (state.has(key)) { this.classList.toggle('show-remove'); return; }
+            if (selectedItem) placeItem(key, selectedItem);
+          };
+          gridEl.appendChild(cell);
+        }
+      }
+
+      document.querySelectorAll('.item').forEach(el => {
+        el.onclick = () => {
+          const data = { type: el.dataset.type, icon: el.dataset.icon, label: el.dataset.label };
+          if (selectedItem?.type === data.type) { selectedItem = null; }
+          else { selectedItem = data; }
+          document.querySelectorAll('.item').forEach(i => i.classList.toggle('selected', i === el && selectedItem));
+        };
+      });
+
+      function updatePlayer(id, pos) {
+        if (!pos) return;
+        let p = players.get(id);
+        if (!p) {
+          p = document.createElement('div'); p.className = 'player-dot';
+          document.getElementById('players').appendChild(p);
+          players.set(id, p);
+        }
+        // Conversion: col c -> x = c - 9.5. So c = x + 9.5
+        const col = pos.x + 9.5, row = pos.z + 4.5;
+        p.style.left = (col * 54 + 27) + 'px'; // cell size 50 + gap 4
+        p.style.top = (row * 54 + 27) + 'px';
+      }
+
+      const timerEl = document.getElementById('timer-display');
+      function startTick() {
+        const h = setInterval(() => {
+          if (!roundEndsAt) { clearInterval(h); return; }
+          const rem = Math.max(0, (roundEndsAt - Date.now()) / 1000);
+          const mm = String(Math.floor(rem/60)).padStart(2,'0'), ss = String(Math.floor(rem%60)).padStart(2,'0');
+          timerEl.textContent = `${mm}:${ss}`;
+          timerEl.classList.toggle('critical', rem < 10);
+        }, 200);
+      }
+
+      function showBanner(reason) {
+        document.getElementById('banner-reason').textContent = reason.toUpperCase();
+        document.getElementById('banner').classList.add('show');
+      }
+      document.getElementById('banner').onclick = () => { document.getElementById('banner').classList.remove('show'); };
+
+      document.getElementById('start-round-btn').onclick = () => {
+        if (roundEndsAt) wsSend({ type: 'ROUND_END', reason: 'host-stopped' });
+        else wsSend({ type: 'ROUND_REQUEST', duration: 30 });
+      };
+
+      connectWS();
+    </script>
+  </body>
+</html>
