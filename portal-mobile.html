@@ -97,15 +97,16 @@
         display: grid;
         grid-template-columns: repeat(20, var(--cell-size));
         grid-template-rows: repeat(10, var(--cell-size));
-        gap: 4px;
+        gap: 0; /* Continuous walls need 0 gap */
+        background: var(--cell-border);
+        border: 1px solid var(--cell-border);
       }
 
       .cell {
         width: var(--cell-size);
         height: var(--cell-size);
         background: var(--cell-bg);
-        border: 1px solid var(--cell-border);
-        border-radius: 4px;
+        border: 0.5px solid var(--cell-border);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -113,6 +114,31 @@
         position: relative;
         cursor: pointer;
         -webkit-tap-highlight-color: transparent;
+        transition: transform 0.1s, box-shadow 0.1s;
+      }
+
+      .cell.occupied {
+        z-index: 5;
+        background: var(--surface2);
+        box-shadow: inset 0 0 10px rgba(99,102,241,0.2), 0 4px 8px rgba(0,0,0,0.5);
+        transform: translateY(-2px);
+      }
+
+      /* Continuous Wall Visuals */
+      .cell.wall { border-radius: 0; }
+      .cell.wall.conn-e { border-right: none; }
+      .cell.wall.conn-w { border-left: none; }
+      .cell.wall.conn-n { border-top: none; }
+      .cell.wall.conn-s { border-bottom: none; }
+      
+      .cell.occupied::after {
+        content: '';
+        position: absolute;
+        inset: 2px;
+        border: 1px solid var(--accent);
+        opacity: 0.2;
+        border-radius: 4px;
+        pointer-events: none;
       }
 
       .cell.alt { background: var(--cell-alt); }
@@ -301,12 +327,24 @@
       }
 
       function syncGrid() {
-        document.querySelectorAll('.cell').forEach(cell => {
-          const key = `${cell.dataset.r},${cell.dataset.c}`;
+        const cells = document.querySelectorAll('.cell');
+        cells.forEach(cell => {
+          const r = parseInt(cell.dataset.r), c = parseInt(cell.dataset.c);
+          const key = `${r},${c}`;
           const item = state.get(key);
-          cell.innerHTML = ''; cell.classList.remove('occupied', 'show-remove');
+          cell.innerHTML = ''; 
+          cell.classList.remove('occupied', 'show-remove', 'wall', 'conn-n', 'conn-s', 'conn-e', 'conn-w');
+          
           if (item) {
             cell.classList.add('occupied');
+            if (item.type === 'cube' || item.type === 'wood') {
+              cell.classList.add('wall');
+              // Check neighbors for continuity
+              if (state.get(`${r},${c+1}`)?.type === item.type) cell.classList.add('conn-e');
+              if (state.get(`${r},${c-1}`)?.type === item.type) cell.classList.add('conn-w');
+              if (state.get(`${r-1},${c}`)?.type === item.type) cell.classList.add('conn-n');
+              if (state.get(`${r+1},${c}`)?.type === item.type) cell.classList.add('conn-s');
+            }
             cell.textContent = item.icon;
             const x = document.createElement('div'); x.className = 'remove-x'; x.textContent = '×';
             x.onclick = (e) => { e.stopPropagation(); clearCell(key); };

@@ -198,7 +198,7 @@ type AvatarRecord = {
 // Wall ("cube") items are rendered as real 3D geometry, not sprites,
 // so players can treat them as spatial obstacles. Tall enough to block
 // over-the-top shots but short enough to peek above if standing.
-const WALL_WIDTH  = 0.95;   // m — leaves a narrow gap between grid cells
+const WALL_WIDTH  = 1.0;   // m — fills the entire cell for continuous look
 const WALL_HEIGHT = 2.2;
 const WALL_COLOR  = 0x3b82f6; // Tailwind blue-500 — matches the 🟦 emoji
 // Pre-round: walls are rendered as thin floor tiles so players can see
@@ -1014,11 +1014,38 @@ export class PortalSystem extends createSystem({}) {
 
     // Try 3D neon model first — if grid-items.ts has a factory for this
     // type, render the cyberpunk geometry instead of an emoji sprite.
-    // Walls are handled above; birds/enemies still use sprites so their
-    // existing AI animation (billboard rotation, flight, etc.) works.
-    const neonModel = (role !== 'enemy' && role !== 'bird') ? createGridItem(type) : null;
+    // Walls are handled above.
+    const neonModel = createGridItem(type);
     if (neonModel) {
       neonModel.position.set(x, 0, z);
+      
+      // For walls, handle continuity with neighbors
+      if (kind === 'wall') {
+        const [r, c] = key.split(',').map(Number);
+        const neighbors = [[0,1], [0,-1], [1,0], [-1,0]];
+        for (const [dr, dc] of neighbors) {
+          const nKey = `${r+dr},${c+dc}`;
+          const n = this.spawnedEntities.get(nKey);
+          if (n && n.kind === 'wall' && n.type === type) {
+            // Add a filler block to THIS wall pointing to neighbor
+            const filler = new Mesh(
+              new BoxGeometry(WALL_WIDTH * 0.15, WALL_HEIGHT, WALL_WIDTH * 0.15),
+              (neonModel as Mesh).material || (neonModel.children[0] as Mesh).material
+            );
+            filler.position.set(dc * 0.5, 0, dr * 0.5); // Swap dr/dc for correct orientation
+            neonModel.add(filler);
+
+            // Also add a filler to the NEIGHBOR pointing back to this wall
+            const reverseFiller = new Mesh(
+              new BoxGeometry(WALL_WIDTH * 0.15, WALL_HEIGHT, WALL_WIDTH * 0.15),
+              (n.object3D as Mesh).material || (n.object3D.children[0] as Mesh).material
+            );
+            reverseFiller.position.set(-dc * 0.5, 0, -dr * 0.5);
+            n.object3D.add(reverseFiller);
+          }
+        }
+      }
+
       const entity = this.world.createTransformEntity(neonModel);
 
       let extra: Mesh | undefined;
@@ -1483,19 +1510,21 @@ export class PortalSystem extends createSystem({}) {
   //  - grounded: sprite flipped upside-down, sits still forever.
   private tickBird(item: SpawnedItem, deltaSeconds: number, time: number) {
     const pos = item.object3D.position;
-    const mat = (item.object3D as Sprite).material as SpriteMaterial;
-
-    // Red-glow flash on non-lethal hit. SpriteMaterial.color multiplies
-    // with the texture, so setting it bright-red tints the emoji crimson
-    // while the hit cue plays. Returns to normal when the window expires.
+    
+    // Support material colors for 3D models (multi-mesh)
     const flashing = performance.now() < item.hitFlashUntil;
-    if (flashing) mat.color.setRGB(1.8, 0.25, 0.25);
-    else if (mat.color.r !== 1 || mat.color.g !== 1 || mat.color.b !== 1) {
-      mat.color.setRGB(1, 1, 1);
-    }
+    item.object3D.traverse((child: any) => {
+      if (child.material) {
+        const mat = child.material;
+        if (flashing) {
+          if (mat.color) mat.color.setRGB(1.8, 0.25, 0.25);
+        } else if (mat.color && (mat.color.r !== 1 || mat.color.g !== 1 || mat.color.b !== 1)) {
+          mat.color.setRGB(1, 1, 1);
+        }
+      }
+    });
 
     if (item.birdState === 'grounded') {
-      // Keep it pinned; upside-down rotation already applied on landing.
       return;
     }
 
@@ -1504,9 +1533,8 @@ export class PortalSystem extends createSystem({}) {
       if (pos.y <= 0.35) {
         pos.y = 0.35;
         item.birdState = 'grounded';
-        // Sprites are always camera-facing, but their image can be
-        // rotated in-plane — PI = upside-down.
-        mat.rotation = Math.PI;
+        // Flip upside-down for both sprites and models
+        item.object3D.rotation.z = Math.PI;
       }
       return;
     }

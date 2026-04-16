@@ -417,6 +417,134 @@ function createRobot(): Object3D {
   return group;
 }
 
+function createGhost(): Object3D {
+  const group = new Group();
+  const mat = createNeonMaterial(COLORS.white, 0.4);
+
+  // Body (dome)
+  const body = new Mesh(new SphereGeometry(0.2, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+  body.position.y = 0.15;
+  group.add(body);
+
+  // Eyes
+  const eyeMat = createNeonMaterial(COLORS.blue, 1.2);
+  const eyeGeo = new SphereGeometry(0.04, 8, 8);
+  const e1 = new Mesh(eyeGeo, eyeMat); e1.position.set(-0.07, 0.25, 0.15); group.add(e1);
+  const e2 = new Mesh(eyeGeo, eyeMat); e2.position.set(0.07, 0.25, 0.15); group.add(e2);
+
+  const glow = new Mesh(new SphereGeometry(0.3, 16, 16), createGlowMaterial(COLORS.white));
+  glow.position.y = 0.2;
+  group.add(glow);
+
+  return group;
+}
+
+function createSkull(): Object3D {
+  const group = new Group();
+  const mat = createNeonMaterial(COLORS.white, 0.6);
+
+  // Head
+  const head = new Mesh(new BoxGeometry(0.3, 0.3, 0.3), mat);
+  head.position.y = 0.3;
+  group.add(head);
+
+  // Eyes (empty sockets)
+  const eyeMat = createNeonMaterial(COLORS.red, 1.5);
+  const e1 = new Mesh(new BoxGeometry(0.08, 0.08, 0.05), eyeMat); e1.position.set(-0.08, 0.35, 0.13); group.add(e1);
+  const e2 = new Mesh(new BoxGeometry(0.08, 0.08, 0.05), eyeMat); e2.position.set(0.08, 0.35, 0.13); group.add(e2);
+
+  // Teeth
+  const toothGeo = new BoxGeometry(0.04, 0.06, 0.02);
+  for (let i = -1; i <= 1; i++) {
+    const t = new Mesh(toothGeo, mat);
+    t.position.set(i * 0.06, 0.18, 0.13);
+    group.add(t);
+  }
+
+  return group;
+}
+
+function createBird(): Object3D {
+  const group = new Group();
+  const mat = createNeonMaterial(COLORS.yellow, 0.5);
+
+  // Body
+  const body = new Mesh(new ConeGeometry(0.1, 0.3, 4), mat);
+  body.rotation.x = Math.PI / 2;
+  group.add(body);
+
+  // Wings
+  const wingGeo = new PlaneGeometry(0.4, 0.15);
+  const leftWing = new Mesh(wingGeo, mat);
+  leftWing.position.set(-0.2, 0, 0);
+  leftWing.rotation.x = -Math.PI / 2;
+  group.add(leftWing);
+
+  const rightWing = new Mesh(wingGeo, mat);
+  rightWing.position.set(0.2, 0, 0);
+  rightWing.rotation.x = -Math.PI / 2;
+  group.add(rightWing);
+
+  return group;
+}
+
+function createSword(): Object3D {
+  const group = new Group();
+  const bladeMat = createNeonMaterial(COLORS.cyan, 1.0);
+  const hiltMat = createNeonMaterial(COLORS.white, 0.2);
+
+  const blade = new Mesh(new BoxGeometry(0.05, 0.6, 0.1), bladeMat);
+  blade.position.y = 0.3;
+  group.add(blade);
+
+  const guard = new Mesh(new BoxGeometry(0.25, 0.04, 0.12), hiltMat);
+  guard.position.y = 0.05;
+  group.add(guard);
+
+  const handle = new Mesh(new CylinderGeometry(0.03, 0.03, 0.2), hiltMat);
+  handle.position.y = -0.1;
+  group.add(handle);
+
+  return group;
+}
+
+function createGun(): Object3D {
+  const group = new Group();
+  const mat = createNeonMaterial(COLORS.green, 0.8);
+
+  const barrel = new Mesh(new CylinderGeometry(0.04, 0.04, 0.4), mat);
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.z = 0.1;
+  group.add(barrel);
+
+  const grip = new Mesh(new BoxGeometry(0.06, 0.15, 0.08), mat);
+  grip.position.y = -0.1;
+  group.add(grip);
+
+  return group;
+}
+
+function createPoo(): Object3D {
+  const group = new Group();
+  const mat = createNeonMaterial(COLORS.orange, 0.5);
+  for (let i = 0; i < 3; i++) {
+    const layer = new Mesh(new TorusGeometry(0.15 - i * 0.04, 0.06, 8, 16), mat);
+    layer.position.y = i * 0.08;
+    layer.rotation.x = Math.PI / 2;
+    group.add(layer);
+  }
+  return group;
+}
+
+function createFeather(): Object3D {
+  const group = new Group();
+  const mat = createNeonMaterial(COLORS.white, 0.4);
+  const blade = new Mesh(new PlaneGeometry(0.1, 0.4), mat);
+  blade.rotation.z = 0.2;
+  group.add(blade);
+  return group;
+}
+
 // ── Factory map ─────────────────────────────────────────────
 
 const ITEM_FACTORIES: Record<string, () => Object3D> = {
@@ -433,7 +561,16 @@ const ITEM_FACTORIES: Record<string, () => Object3D> = {
   star: createStar,
   music: createMusic,
   robot: createRobot,
+  ghost: createGhost,
+  skull: createSkull,
+  bird: createBird,
+  sword: createSword,
+  gun: createGun,
+  poo: createPoo,
+  feather: createFeather,
+  wood: createCube, // Use cube for wood but color will be set in portal.ts
 };
+
 
 // ── Public API ──────────────────────────────────────────────
 
