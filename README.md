@@ -1,5 +1,3 @@
-Ted was here
-
 # 🌌 The Prototyping Void
 
 A high-fidelity spatial sandbox game for Meta Quest. Real-time AR, physics-driven gameplay, and a responsive spatial UI built on a performant ECS architecture. Demonstrating next-gen mixed-reality experiences on consumer hardware.
