@@ -1,11 +1,45 @@
 # 🌌 The Prototyping Void
 
-A high-fidelity spatial sandbox game for Meta Quest. Real-time AR, physics-driven gameplay, and a responsive spatial UI built on a performant ECS architecture. Demonstrating next-gen mixed-reality experiences on consumer hardware.
+An asymmetric multiplayer VR game where one player in VR fights to survive against classmates attacking from their phones.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Meta%20Quest%20%2B%20Web-brightgreen.svg)
 ![Status](https://img.shields.io/badge/Status-Foundation%20Ready-blueviolet.svg)
+
+---
+
+## 🎮 Game Rules
+
+**Asymmetric VR vs Mobile Gameplay**
+
+| Role | Platform | Objective |
+|------|----------|-----------|
+| **Survivor** | Meta Quest (VR) | Dodge attacks and survive for 30 seconds |
+| **Attackers** | Phone/Tablet (Portal) | Hit the VR player with placed objects |
+
+### Win Conditions
+
+- **VR Player Wins**: Survive the full 30-second round without getting hit
+- **Attackers Win**: Land a hit on the VR player before time runs out
+
+### Placement Rules
+
+- **One item on grid at a time** — placing a new item removes the previous one
+- Items spawn instantly at the selected grid cell
+- VR player sees items as 3D objects in their space
+
+---
+
+## 📦 Attack Components
+
+Attackers drag-and-drop items from the portal onto the 20×10 grid:
+
+| Category | Items |
+|----------|-------|
+| **Shapes** | 🟦 Cube, 🔵 Sphere, 🟤 Cylinder |
+| **Furniture** | 🪑 Chair, 🪵 Table, 💡 Lamp, 🌿 Plant, 🖥️ Screen |
+| **Effects** | 🔥 Fire, 🌀 Portal, ⭐ Star, 🎵 Music, 🤖 Robot |
 
 ---
 
@@ -27,18 +61,6 @@ A high-fidelity spatial sandbox game for Meta Quest. Real-time AR, physics-drive
 - 20×10 meter grid floor (1m cells)
 - Real-time sync between 2D planner (phone/tablet) and 3D VR view
 - WebSocket-based multi-user state with Cloud Run deployment
-
-### 📦 Grid Components
-
-Drag-and-drop items from the 2D planner onto the grid:
-
-| Category | Items |
-|----------|-------|
-| **Shapes** | 🟦 Cube, 🔵 Sphere, 🟤 Cylinder |
-| **Furniture** | 🪑 Chair, 🪵 Table, 💡 Lamp, 🌿 Plant, 🖥️ Screen |
-| **Effects** | 🔥 Fire, 🌀 Portal, ⭐ Star, 🎵 Music, 🤖 Robot |
-
-Items appear as emoji sprites in VR — infrastructure ready for 3D model spawning.
 
 ### 👥 Multi-User Architecture
 
