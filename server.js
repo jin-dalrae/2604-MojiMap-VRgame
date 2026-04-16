@@ -23,13 +23,109 @@ import { randomUUID } from 'crypto';
 
 const PORT = process.env.PORT || 3001;
 
+
 // ── Shared state ────────────────────────────────────────────
-const gridState = new Map(); // "r,c" -> { type, icon, label }
+const gridState = new Map(); // "r,c" -> { type, icon, label, role }
 const users = new Map();     // userId -> { position: {x, z, heading}, spaceId }
+
+// Portal sliders — live on the server so every connecting client
+// (VR + broadcast) adopts the same scales on WELCOME. Clamped to the
+// same ranges the portal UI allows.
+//   gridScale  — playable stage footprint
+//   emojiScale — every sprite + hitbox
+let gridScale = 0.8;
+let emojiScale = 1.0;
+const GRID_SCALE_MIN = 0.4;
+const GRID_SCALE_MAX = 1.2;
+const EMOJI_SCALE_MIN = 0.4;
+const EMOJI_SCALE_MAX = 2.0;
+
+// Round state. endsAt === 0 means no round in progress.
+// `pending` = portal has requested a round, waiting for a VR player to
+// confirm readiness at the chair. Actual timer doesn't start until then.
+// `snapshot` is a deep copy of gridState at ROUND_START — items the VR
+// clients clear during the round are restored at ROUND_END so the
+// designer's layout is authoritative across rounds.
+const round = {
+  endsAt: 0,
+  duration: 0,
+  timeout: null,
+  snapshot: null,
+  pending: false,
+  pendingDuration: 0,
+};
+
+function cancelPending() {
+  if (!round.pending) return;
+  round.pending = false;
+  round.pendingDuration = 0;
+  broadcast({ type: 'ROUND_CANCEL' });
+  console.log('[⏱] Round request cancelled');
+}
+
+function endRound(reason) {
+  if (!round.endsAt) return;
+  if (round.timeout) { clearTimeout(round.timeout); round.timeout = null; }
+  round.endsAt = 0;
+  round.duration = 0;
+  // Restore the pre-round layout + push a full resync so every client
+  // re-renders from the same authoritative snapshot.
+  if (round.snapshot) {
+    gridState.clear();
+    for (const [k, v] of round.snapshot) gridState.set(k, v);
+    round.snapshot = null;
+  }
+  console.log(`[⏱] Round ended (${reason})`);
+  broadcast({ type: 'ROUND_END', reason });
+  broadcast({ type: 'GRID_SYNC', grid: Object.fromEntries(gridState) });
+}
+
+function startRound(duration) {
+  // Clamp to the same range the portal UI allows.
+  const d = Math.max(5, Math.min(600, Math.round(duration)));
+  if (round.timeout) clearTimeout(round.timeout);
+  round.duration = d;
+  round.endsAt = Date.now() + d * 1000;
+  // Snapshot the layout so the designer's grid survives the round even
+  // though individual clients GRID_CLEAR items as they pick them up.
+  round.snapshot = new Map();
+  for (const [k, v] of gridState) round.snapshot.set(k, { ...v });
+  // Wipe cached player stats so the leaderboard doesn't show last round's
+  // scores until a client sends its first PLAYER_POSITION. Actual truth
+  // lives on the VR clients — this just normalizes initial display.
+  for (const u of users.values()) {
+    u.score = 0;
+    u.health = 100;
+    u.goalsCollected = 0;
+    u.goalsTotal = 0;
+    u.dead = false;
+  }
+  console.log(`[⏱] Round started (${d}s, snapshot=${round.snapshot.size} items)`);
+  broadcast({ type: 'ROUND_START', duration: d, endsAt: round.endsAt });
+  // Server is authoritative: auto-broadcast ROUND_END when the timer fires.
+  round.timeout = setTimeout(() => endRound('timeout'), d * 1000);
+}
 
 // ── Server setup ─────────────────────────────────────────────
 const server = createServer();
 const wss = new WebSocketServer({ server });
+
+// HTTP routes — basic health check + CORS.
+server.on('request', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  if (req.url === '/api/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  res.writeHead(404, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'Not found' }));
+});
 
 function broadcast(msg, exclude = null) {
   const str = JSON.stringify(msg);
@@ -48,12 +144,20 @@ wss.on('connection', (ws) => {
   const short = userId.slice(0, 8);
   console.log(`[+] Client connected ${short} (${wss.clients.size} total)`);
 
-  // Initial state dump: grid + everyone currently present.
+  // Initial state dump: grid + presence + any in-progress round.
+  // `round.endsAt` is absolute ms epoch so new clients sync their countdown
+  // to the same wall-clock moment other clients are already watching.
   ws.send(JSON.stringify({
     type: 'WELCOME',
     userId,
     grid: Object.fromEntries(gridState),
     users: Object.fromEntries(users),
+    round: round.endsAt
+      ? { endsAt: round.endsAt, duration: round.duration }
+      : null,
+    pendingRound: round.pending ? { duration: round.pendingDuration } : null,
+    gridScale,
+    emojiScale,
   }));
 
   ws.on('message', (raw) => {
@@ -76,10 +180,89 @@ wss.on('connection', (ws) => {
         broadcast({ type: 'GRID_CLEAR_ALL' });
         break;
 
+      case 'ITEM_STATES':
+        // Authoritative live positions of dynamic items (enemies + birds)
+        // from a VR client. Server just relays — too transient to store
+        // and not part of the persistent grid layout.
+        broadcast({ type: 'ITEM_STATES', items: msg.items }, ws);
+        break;
+
+      case 'SET_GRID_SCALE': {
+        // Portal slider. Clamp + store + broadcast to every client
+        // (including sender so the slider snaps to the clamped value).
+        const s = Number(msg.scale);
+        if (!Number.isFinite(s)) break;
+        gridScale = Math.max(GRID_SCALE_MIN, Math.min(GRID_SCALE_MAX, s));
+        console.log(`[grid] scale set to ${gridScale.toFixed(2)}`);
+        broadcast({ type: 'SET_GRID_SCALE', scale: gridScale });
+        break;
+      }
+
+      case 'SET_EMOJI_SCALE': {
+        const s = Number(msg.scale);
+        if (!Number.isFinite(s)) break;
+        emojiScale = Math.max(EMOJI_SCALE_MIN, Math.min(EMOJI_SCALE_MAX, s));
+        console.log(`[emoji] scale set to ${emojiScale.toFixed(2)}`);
+        broadcast({ type: 'SET_EMOJI_SCALE', scale: emojiScale });
+        break;
+      }
+
+      case 'ROUND_START':
+        // Legacy — straight-to-start path (kept for any client that
+        // hasn't migrated to the pending flow).
+        startRound(msg.duration);
+        break;
+
+      case 'ROUND_REQUEST': {
+        // Portal asked to start; enter pending state. VR players must
+        // walk to the chair + press SELECT to confirm → actual start.
+        if (round.endsAt || round.pending) break;
+        const d = Math.max(5, Math.min(600, Math.round(msg.duration || 30)));
+        round.pending = true;
+        round.pendingDuration = d;
+        console.log(`[⏱] Round requested (${d}s) — waiting for VR ready`);
+        broadcast({ type: 'ROUND_PENDING', duration: d });
+        // If there are no VR players at all, auto-start so the portal
+        // operator can still run solo tests.
+        let vrPlayers = 0;
+        for (const u of users.values()) vrPlayers++;
+        if (vrPlayers === 0) {
+          console.log('[⏱] No VR players connected — auto-starting');
+          round.pending = false;
+          startRound(d);
+        }
+        break;
+      }
+
+      case 'ROUND_READY':
+        // First VR player to confirm kicks off the actual round.
+        if (round.pending) {
+          const d = round.pendingDuration;
+          round.pending = false;
+          round.pendingDuration = 0;
+          startRound(d);
+        }
+        break;
+
+      case 'ROUND_CANCEL':
+        cancelPending();
+        break;
+
+      case 'ROUND_END':
+        endRound(msg.reason || 'host-stopped');
+        break;
+
       case 'PLAYER_POSITION': {
+        // Stats ride along with each position packet so observers can
+        // render a live leaderboard without a separate message type.
         const record = {
           position: msg.position,
           spaceId: msg.spaceId ?? null,
+          score: msg.score ?? 0,
+          health: msg.health ?? 100,
+          goalsCollected: msg.goalsCollected ?? 0,
+          goalsTotal: msg.goalsTotal ?? 0,
+          dead: !!msg.dead,
         };
         const firstTime = !ws.isPresent;
         ws.isPresent = true;
@@ -100,6 +283,11 @@ wss.on('connection', (ws) => {
           userId,
           position: record.position,
           spaceId: record.spaceId,
+          score: record.score,
+          health: record.health,
+          goalsCollected: record.goalsCollected,
+          goalsTotal: record.goalsTotal,
+          dead: record.dead,
         }, ws);
         break;
       }

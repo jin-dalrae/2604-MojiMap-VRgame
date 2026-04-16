@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>XR Portal — Grid Planner</title>
+    <title>MojiMap</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -60,6 +60,300 @@
       }
 
       .header-actions { display: flex; gap: 6px; align-items: center; }
+
+      /* ── Stage-size slider ── */
+      .grid-scale-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .grid-scale-label input[type="range"] {
+        width: 120px;
+        accent-color: var(--accent);
+      }
+      .grid-scale-value {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        color: var(--text);
+        min-width: 44px;
+        text-align: right;
+      }
+
+      /* ── Round controls (header center) ── */
+      .round-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+        justify-content: center;
+      }
+      .round-controls label {
+        font-size: 10px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .round-controls input[type="number"] {
+        width: 54px;
+        padding: 4px 6px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 6px;
+        font-size: 11px;
+        font-family: inherit;
+        text-align: right;
+      }
+      .round-controls input[type="number"]:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .timer-display {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text);
+        letter-spacing: 1px;
+        min-width: 80px;
+        text-align: center;
+        padding: 2px 10px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        transition: color 0.2s, border-color 0.2s;
+      }
+      .timer-display.running { color: #10b981; border-color: #10b981; }
+      .timer-display.warning { color: #f59e0b; border-color: #f59e0b; }
+      .timer-display.critical { color: #ef4444; border-color: #ef4444; animation: pulse 0.6s infinite; }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
+      .btn-primary.running {
+        background: #ef4444;
+      }
+      .btn-primary.running:hover { background: #dc2626; }
+
+      /* ── Toast popup (validation messages) ── */
+      .toast {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.92);
+        background: #1c1917;
+        border: 1px solid #ef4444;
+        color: #f4f4f5;
+        padding: 18px 28px;
+        border-radius: 12px;
+        font-size: 15px;
+        box-shadow: 0 16px 48px rgba(0,0,0,0.7), 0 0 24px rgba(239,68,68,0.35);
+        z-index: 200;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s, transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+        max-width: 90vw;
+        text-align: center;
+        line-height: 1.5;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      /* ── Round-end banner ── */
+      .banner-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(4px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        animation: banner-fade-in 0.25s ease-out;
+      }
+      .banner-backdrop.show { display: flex; }
+      @keyframes banner-fade-in {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      .banner-card {
+        background: linear-gradient(180deg, #18181b 0%, #0a0a0d 100%);
+        border: 2px solid var(--banner-accent, #71717a);
+        border-radius: 16px;
+        padding: 36px 56px;
+        min-width: 380px;
+        text-align: center;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.8), 0 0 40px var(--banner-accent, transparent);
+        animation: banner-pop 0.35s cubic-bezier(0.2, 0.9, 0.25, 1.2);
+      }
+      @keyframes banner-pop {
+        from { transform: scale(0.6); opacity: 0; }
+        to   { transform: scale(1);   opacity: 1; }
+      }
+      .banner-reason {
+        font-size: 44px;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        color: var(--banner-accent, #f4f4f5);
+        margin-bottom: 18px;
+        text-transform: uppercase;
+      }
+      .banner-winner-label {
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 6px;
+      }
+      .banner-winner {
+        font-size: 28px;
+        color: var(--text);
+        margin-bottom: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .banner-winner-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--wcolor, #666);
+        box-shadow: 0 0 12px var(--wcolor, transparent);
+      }
+      .banner-score {
+        font-size: 38px;
+        color: #fbbf24;
+        font-weight: 700;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        margin-top: 8px;
+      }
+      .banner-no-winner {
+        font-size: 16px;
+        color: var(--muted);
+        font-style: italic;
+      }
+      .banner-dismiss-hint {
+        font-size: 10px;
+        color: var(--muted);
+        margin-top: 24px;
+        letter-spacing: 0.5px;
+      }
+
+      /* ── Leaderboard (VR player scores) ── */
+      .leaderboard {
+        position: fixed;
+        top: 56px;
+        right: 12px;
+        background: rgba(18,18,22,0.92);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        min-width: 180px;
+        max-width: 260px;
+        font-size: 11px;
+        z-index: 40;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+        backdrop-filter: blur(6px);
+      }
+      .lb-title {
+        font-size: 9px;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 6px;
+        letter-spacing: 0.6px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .lb-row {
+        display: grid;
+        grid-template-columns: 12px 1fr auto 34px;
+        gap: 8px;
+        align-items: center;
+        padding: 4px 0;
+        border-top: 1px solid rgba(63,63,70,0.4);
+      }
+      .lb-row:first-child { border-top: none; }
+      .lb-rank-1 .lb-name { color: #fbbf24; font-weight: 700; }
+      .lb-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--pcolor, #666);
+        box-shadow: 0 0 6px var(--pcolor, transparent);
+      }
+      .lb-name {
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 10.5px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .lb-score {
+        color: #fbbf24;
+        font-weight: 700;
+        font-family: ui-monospace, monospace;
+      }
+      .lb-health {
+        color: var(--muted);
+        font-size: 10px;
+        font-family: ui-monospace, monospace;
+        text-align: right;
+      }
+      .lb-health.warning { color: #f59e0b; }
+      .lb-health.critical { color: #ef4444; }
+      .lb-empty {
+        color: var(--muted);
+        font-size: 10px;
+        font-style: italic;
+        padding: 4px 0;
+      }
+
+      @media (max-width: 900px) {
+        .leaderboard {
+          top: 48px;
+          right: 8px;
+          min-width: 140px;
+          padding: 6px 8px;
+          font-size: 10px;
+        }
+      }
+
+      /* ── Role-based cell tinting ── */
+      .cell[data-role="weapon-sword"],
+      .cell[data-role="weapon-gun"],
+      .cell[data-role="goal"],
+      .cell[data-role="powerup"] {
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35), 0 0 6px rgba(255,255,255,0.15);
+      }
+      .cell[data-role="obstacle-damage"],
+      .cell[data-role="enemy"] {
+        box-shadow: inset 0 0 0 1px rgba(239,68,68,0.55), 0 0 6px rgba(239,68,68,0.25);
+      }
+      .cell[data-role="spawn"],
+      .item[data-role="spawn"] {
+        box-shadow: inset 0 0 0 1px rgba(16,185,129,0.5), 0 0 6px rgba(16,185,129,0.25);
+      }
+      .cell[data-role="bird"],
+      .item[data-role="bird"] {
+        box-shadow: inset 0 0 0 1px rgba(56,189,248,0.55), 0 0 6px rgba(56,189,248,0.3);
+      }
+      .item[data-role="weapon-sword"],
+      .item[data-role="weapon-gun"],
+      .item[data-role="goal"],
+      .item[data-role="powerup"] {
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3);
+      }
+      .item[data-role="obstacle-damage"],
+      .item[data-role="enemy"] {
+        box-shadow: inset 0 0 0 1px rgba(239,68,68,0.45);
+      }
 
       .btn {
         padding: 5px 11px;
@@ -362,12 +656,46 @@
   </head>
   <body>
     <header>
-      <h1>⬡ XR Grid Planner</h1>
+      <h1>MojiMap</h1>
+      <div class="round-controls">
+        <label>
+          Round
+          <input type="number" id="round-duration" min="5" max="600" step="5" value="30" />
+          s
+        </label>
+        <div class="timer-display" id="timer-display">00:30</div>
+      </div>
+      <label class="grid-scale-label" title="Shrinks the playable stage so it fits a Quest room boundary. Emoji/pickup sprites stay the same size.">
+        Stage
+        <input type="range" id="grid-scale" min="0.4" max="1.2" step="0.05" value="0.8" />
+        <span id="grid-scale-value" class="grid-scale-value">0.80×</span>
+      </label>
+      <label class="grid-scale-label" title="Scales every emoji sprite AND its hitbox (pickup, sword, enemy touch, bird). Doesn't affect the stage.">
+        Emoji
+        <input type="range" id="emoji-scale" min="0.4" max="2.0" step="0.05" value="1.0" />
+        <span id="emoji-scale-value" class="grid-scale-value">1.00×</span>
+      </label>
       <div class="header-actions">
         <button class="btn btn-ghost" id="clear-btn">Clear</button>
-        <button class="btn btn-primary" id="transmit-btn">Transmit</button>
+        <button class="btn btn-primary" id="start-round-btn">Start Round</button>
       </div>
     </header>
+
+    <!-- Round-end banner — modal with winner + result -->
+    <div class="banner-backdrop" id="banner" role="dialog" aria-modal="true">
+      <div class="banner-card">
+        <div class="banner-reason" id="banner-reason">ROUND OVER</div>
+        <div class="banner-winner-label" id="banner-winner-label">Winner</div>
+        <div id="banner-winner-host"></div>
+        <div class="banner-dismiss-hint">Click anywhere to dismiss</div>
+      </div>
+    </div>
+
+    <!-- Live leaderboard (VR players who've sent at least one position) -->
+    <div class="leaderboard" id="leaderboard">
+      <div class="lb-title"><span>Players</span><span id="lb-count">0</span></div>
+      <div id="lb-entries"><div class="lb-empty">Waiting for VR players…</div></div>
+    </div>
 
     <!-- Mobile layout: grid area directly in body -->
     <div class="grid-area" id="grid-area-mobile">
@@ -384,45 +712,51 @@
 
     <!-- Mobile palette strip (bottom) -->
     <div class="palette" id="palette-mobile">
-      <span class="palette-section">Prims</span>
-      <div class="item" data-type="cube"     data-icon="🟦" data-label="Cube">     <span class="item-icon">🟦</span><span class="item-label">Cube</span></div>
-      <div class="item" data-type="sphere"   data-icon="🔵" data-label="Sphere">   <span class="item-icon">🔵</span><span class="item-label">Sphere</span></div>
-      <div class="item" data-type="cylinder" data-icon="🟤" data-label="Cylinder"> <span class="item-icon">🟤</span><span class="item-label">Cylinder</span></div>
+      <span class="palette-section">Weapons</span>
+      <div class="item" data-type="sword"         data-icon="🗡️" data-label="Sword">        <span class="item-icon">🗡️</span><span class="item-label">Sword</span></div>
+      <div class="item" data-type="gun"           data-icon="🔫" data-label="Squirt">       <span class="item-icon">🔫</span><span class="item-label">Squirt</span></div>
+      <div class="item" data-type="poopoodoodoo"  data-icon="💩" data-label="poopoodoodoo"> <span class="item-icon">💩</span><span class="item-label">poopoodoodoo</span></div>
+      <div class="item" data-type="feather"       data-icon="🪶" data-label="Feather">      <span class="item-icon">🪶</span><span class="item-label">Feather</span></div>
       <div class="palette-divider"></div>
-      <span class="palette-section">Furn.</span>
-      <div class="item" data-type="chair"  data-icon="🪑" data-label="Chair">  <span class="item-icon">🪑</span><span class="item-label">Chair</span></div>
-      <div class="item" data-type="table"  data-icon="🪵" data-label="Table">  <span class="item-icon">🪵</span><span class="item-label">Table</span></div>
-      <div class="item" data-type="lamp"   data-icon="💡" data-label="Lamp">   <span class="item-icon">💡</span><span class="item-label">Lamp</span></div>
-      <div class="item" data-type="plant"  data-icon="🌿" data-label="Plant">  <span class="item-icon">🌿</span><span class="item-label">Plant</span></div>
-      <div class="item" data-type="screen" data-icon="🖥️" data-label="Screen"> <span class="item-icon">🖥️</span><span class="item-label">Screen</span></div>
+      <span class="palette-section">Goals</span>
+      <div class="item" data-type="star"     data-icon="⭐" data-label="Star">     <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
       <div class="palette-divider"></div>
-      <span class="palette-section">FX</span>
-      <div class="item" data-type="fire"   data-icon="🔥" data-label="Fire">   <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
-      <div class="item" data-type="portal" data-icon="🌀" data-label="Portal"> <span class="item-icon">🌀</span><span class="item-label">Portal</span></div>
-      <div class="item" data-type="star"   data-icon="⭐" data-label="Star">   <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
-      <div class="item" data-type="music"  data-icon="🎵" data-label="Music">  <span class="item-icon">🎵</span><span class="item-label">Music</span></div>
-      <div class="item" data-type="robot"  data-icon="🤖" data-label="Robot">  <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+      <span class="palette-section">Wildlife</span>
+      <div class="item" data-type="bird"     data-icon="🦅" data-label="Eagle">    <span class="item-icon">🦅</span><span class="item-label">Eagle</span></div>
+      <div class="palette-divider"></div>
+      <span class="palette-section">Hazards</span>
+      <div class="item" data-type="fire"     data-icon="🔥" data-label="Fire">     <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
+      <div class="item" data-type="robot"    data-icon="🤖" data-label="Robot">    <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+      <div class="item" data-type="ghost"    data-icon="👻" data-label="Ghost">    <span class="item-icon">👻</span><span class="item-label">Ghost</span></div>
+      <div class="item" data-type="skull"    data-icon="💀" data-label="Skull">    <span class="item-icon">💀</span><span class="item-label">Skull</span></div>
+      <div class="palette-divider"></div>
+      <span class="palette-section">Decor</span>
+      <div class="item" data-type="cube"     data-icon="🟦" data-label="Wall">     <span class="item-icon">🟦</span><span class="item-label">Wall</span></div>
+      <div class="item" data-type="wood"     data-icon="🟫" data-label="Wood">     <span class="item-icon">🟫</span><span class="item-label">Wood</span></div>
+      <div class="item" data-type="chair"    data-icon="🪑" data-label="Start Pt">  <span class="item-icon">🪑</span><span class="item-label">Start Pt</span></div>
     </div>
 
     <!-- Desktop layout wrapper -->
     <div class="content-wrap">
       <div class="palette" id="palette-desktop">
-        <div class="palette-section">Primitives</div>
-        <div class="item" data-type="cube"     data-icon="🟦" data-label="Cube">     <span class="item-icon">🟦</span><span class="item-label">Cube</span></div>
-        <div class="item" data-type="sphere"   data-icon="🔵" data-label="Sphere">   <span class="item-icon">🔵</span><span class="item-label">Sphere</span></div>
-        <div class="item" data-type="cylinder" data-icon="🟤" data-label="Cylinder"> <span class="item-icon">🟤</span><span class="item-label">Cylinder</span></div>
-        <div class="palette-section">Furniture</div>
-        <div class="item" data-type="chair"  data-icon="🪑" data-label="Chair">  <span class="item-icon">🪑</span><span class="item-label">Chair</span></div>
-        <div class="item" data-type="table"  data-icon="🪵" data-label="Table">  <span class="item-icon">🪵</span><span class="item-label">Table</span></div>
-        <div class="item" data-type="lamp"   data-icon="💡" data-label="Lamp">   <span class="item-icon">💡</span><span class="item-label">Lamp</span></div>
-        <div class="item" data-type="plant"  data-icon="🌿" data-label="Plant">  <span class="item-icon">🌿</span><span class="item-label">Plant</span></div>
-        <div class="item" data-type="screen" data-icon="🖥️" data-label="Screen"> <span class="item-icon">🖥️</span><span class="item-label">Screen</span></div>
-        <div class="palette-section">Effects</div>
-        <div class="item" data-type="fire"   data-icon="🔥" data-label="Fire">   <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
-        <div class="item" data-type="portal" data-icon="🌀" data-label="Portal"> <span class="item-icon">🌀</span><span class="item-label">Portal</span></div>
-        <div class="item" data-type="star"   data-icon="⭐" data-label="Star">   <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
-        <div class="item" data-type="music"  data-icon="🎵" data-label="Music">  <span class="item-icon">🎵</span><span class="item-label">Music</span></div>
-        <div class="item" data-type="robot"  data-icon="🤖" data-label="Robot">  <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+        <div class="palette-section">Weapons</div>
+        <div class="item" data-type="sword"         data-icon="🗡️" data-label="Sword">        <span class="item-icon">🗡️</span><span class="item-label">Sword</span></div>
+        <div class="item" data-type="gun"           data-icon="🔫" data-label="Squirt">       <span class="item-icon">🔫</span><span class="item-label">Squirt</span></div>
+        <div class="item" data-type="poopoodoodoo"  data-icon="💩" data-label="poopoodoodoo"> <span class="item-icon">💩</span><span class="item-label">poopoodoodoo</span></div>
+      <div class="item" data-type="feather"       data-icon="🪶" data-label="Feather">      <span class="item-icon">🪶</span><span class="item-label">Feather</span></div>
+        <div class="palette-section">Goals</div>
+        <div class="item" data-type="star"     data-icon="⭐" data-label="Star">     <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
+        <div class="palette-section">Wildlife</div>
+        <div class="item" data-type="bird"     data-icon="🦅" data-label="Eagle">    <span class="item-icon">🦅</span><span class="item-label">Eagle</span></div>
+        <div class="palette-section">Hazards</div>
+        <div class="item" data-type="fire"     data-icon="🔥" data-label="Fire">     <span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
+        <div class="item" data-type="robot"    data-icon="🤖" data-label="Robot">    <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+        <div class="item" data-type="ghost"    data-icon="👻" data-label="Ghost">    <span class="item-icon">👻</span><span class="item-label">Ghost</span></div>
+        <div class="item" data-type="skull"    data-icon="💀" data-label="Skull">    <span class="item-icon">💀</span><span class="item-label">Skull</span></div>
+        <div class="palette-section">Decor</div>
+        <div class="item" data-type="cube"     data-icon="🟦" data-label="Wall">     <span class="item-icon">🟦</span><span class="item-label">Wall</span></div>
+        <div class="item" data-type="wood"     data-icon="🟫" data-label="Wood">     <span class="item-icon">🟫</span><span class="item-label">Wood</span></div>
+        <div class="item" data-type="chair"    data-icon="🪑" data-label="Start Pt">  <span class="item-icon">🪑</span><span class="item-label">Start Pt</span></div>
       </div>
 
       <div class="grid-area" id="grid-area-desktop">
@@ -447,6 +781,28 @@
 
     <script>
       const COLS = 20, ROWS = 10;
+
+      // ── Role inference ────────────────────────────────────────
+      // Drives VR behavior: pickups get halos + equipment grant, hazards
+      // damage player, enemies have AI + are killable, decor is inert.
+      const ROLE_BY_ICON = {
+        '🗡️': 'weapon-sword',
+        '🔫': 'weapon-gun',
+        '💩': 'weapon-poo',
+        '🪶': 'weapon-feather',
+        '⭐': 'goal',
+        '🔥': 'obstacle-damage',
+        '🤖': 'enemy', '👻': 'enemy', '💀': 'enemy',
+        '🪑': 'spawn',
+        '🦅': 'bird',
+        // everything else → 'decor' (falls through)
+      };
+      function roleFor(icon) { return ROLE_BY_ICON[icon] || 'decor'; }
+
+      // Stamp role on each palette item's DOM so CSS tinting works.
+      document.querySelectorAll('.item[data-icon]').forEach(el => {
+        el.dataset.role = roleFor(el.dataset.icon);
+      });
 
       // ── WebSocket sync ───────────────────────────────────────
       const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -493,15 +849,42 @@
                 state.set(key, item);
               }
               syncGrids();
+              if (typeof msg.gridScale === 'number') reflectGridScale(msg.gridScale);
+              if (typeof msg.emojiScale === 'number') reflectEmojiScale(msg.emojiScale);
+              // Adopt any in-progress or pending round from the snapshot.
+              if (msg.round && msg.round.endsAt > Date.now()) {
+                roundEndsAt = msg.round.endsAt;
+                setRoundState('running');
+                startTick();
+              } else if (msg.pendingRound) {
+                setRoundState('pending');
+              } else {
+                setRoundState('idle');
+              }
+              renderTimer();
               // Clear any stale markers then rebuild from the snapshot.
               for (const userId of [...players.keys()]) removePlayer(userId);
+              playerStats.clear();
+              renderLeaderboard();
               for (const [userId, user] of Object.entries(msg.users || {})) {
                 updatePlayer(userId, user.position);
+                updatePlayerStats(userId, user);
               }
               break;
 
             case 'GRID_UPDATE':
               state.set(msg.key, msg.item);
+              syncGrids();
+              break;
+
+            case 'GRID_SYNC':
+              // Server sends this after ROUND_END to restore the design
+              // snapshot — items picked up during the round reappear so
+              // the planner's layout survives.
+              state.clear();
+              for (const [key, item] of Object.entries(msg.grid || {})) {
+                state.set(key, item);
+              }
               syncGrids();
               break;
 
@@ -515,16 +898,65 @@
               syncGrids();
               break;
 
+            case 'SET_GRID_SCALE':
+              // Server echoes the clamped value — reflect it in the UI
+              // so the slider snaps if the operator dragged out of range.
+              if (typeof msg.scale === 'number') reflectGridScale(msg.scale);
+              break;
+
+            case 'SET_EMOJI_SCALE':
+              if (typeof msg.scale === 'number') reflectEmojiScale(msg.scale);
+              break;
+
             case 'USER_JOIN':
               updatePlayer(msg.userId, msg.position);
               break;
 
             case 'USER_LEAVE':
               removePlayer(msg.userId);
+              playerStats.delete(msg.userId);
+              renderLeaderboard();
               break;
 
             case 'PLAYER_POSITION':
               updatePlayer(msg.userId, msg.position);
+              // Score/health ride along with every position packet.
+              updatePlayerStats(msg.userId, msg);
+              break;
+
+            case 'ROUND_PENDING':
+              // Server acknowledged the request; VR players need to
+              // walk to the chair and press SELECT to actually start.
+              setRoundState('pending');
+              break;
+
+            case 'ROUND_CANCEL':
+              setRoundState('idle');
+              break;
+
+            case 'ROUND_START':
+              // Server sends absolute `endsAt` so all clients stay synced
+              // regardless of clock skew between portal tabs.
+              roundEndsAt = msg.endsAt;
+              setRoundRunning(true);
+              startTick();
+              renderTimer();
+              hideBanner();
+              // Wipe the visible leaderboard so stale numbers don't hang
+              // around before the first position packet arrives.
+              for (const s of playerStats.values()) {
+                s.score = 0; s.health = 100;
+                s.goalsCollected = 0; s.goalsTotal = 0;
+              }
+              renderLeaderboard();
+              break;
+
+            case 'ROUND_END':
+              roundEndsAt = 0;
+              setRoundState('idle');
+              stopTick();
+              renderTimer();
+              showBanner(msg.reason || 'timeout');
               break;
           }
         };
@@ -594,6 +1026,139 @@
           if (s) { s.dot.remove(); s.cone.remove(); }
         }
         players.delete(userId);
+      }
+
+      // ── Round-end banner ───────────────────────────────────
+      const BANNER_META = {
+        completed:    { title: 'VICTORY',       color: '#10b981' },
+        died:         { title: 'CONTESTANT DOWN', color: '#ef4444' },
+        timeout:      { title: "TIME'S UP",     color: '#f59e0b' },
+        'host-stopped': { title: 'ROUND ENDED', color: '#a1a1aa' },
+      };
+      const BANNER_DURATION_MS = 5500;
+      let bannerHideTimer = null;
+
+      function showBanner(reason) {
+        const meta = BANNER_META[reason] ?? BANNER_META['host-stopped'];
+        const banner = document.getElementById('banner');
+        banner.style.setProperty('--banner-accent', meta.color);
+        document.getElementById('banner-reason').textContent = meta.title;
+
+        // Snapshot the leaderboard at this moment — damageEnemy +
+        // pickups have all settled before ROUND_END fires.
+        const ranked = [...playerStats.entries()].sort((a, b) => {
+          const ga = a[1].goalsCollected, gb = b[1].goalsCollected;
+          if (ga !== gb) return gb - ga;
+          if (a[1].score !== b[1].score) return b[1].score - a[1].score;
+          return b[1].health - a[1].health;
+        });
+
+        const host = document.getElementById('banner-winner-host');
+        const label = document.getElementById('banner-winner-label');
+        host.innerHTML = '';
+        if (ranked.length === 0) {
+          label.textContent = '';
+          const p = document.createElement('div');
+          p.className = 'banner-no-winner';
+          p.textContent = 'No contestants this round';
+          host.appendChild(p);
+        } else {
+          // Host shows the top player + their score. Draws/ties just
+          // show whoever sorted first — good enough for a prototype.
+          const [userId, stats] = ranked[0];
+          label.textContent = reason === 'died' ? 'Final Standing' : 'Winner';
+          const color = colorForUser(userId);
+
+          const winnerRow = document.createElement('div');
+          winnerRow.className = 'banner-winner';
+          winnerRow.style.setProperty('--wcolor', color.solid);
+          winnerRow.innerHTML =
+            `<span class="banner-winner-dot"></span><span>${userId.slice(0, 8)}</span>`;
+          host.appendChild(winnerRow);
+
+          const score = document.createElement('div');
+          score.className = 'banner-score';
+          const progress = stats.goalsTotal > 0
+            ? `${stats.goalsCollected} / ${stats.goalsTotal}`
+            : String(stats.score);
+          score.textContent = `⭐ ${progress}`;
+          host.appendChild(score);
+        }
+
+        banner.classList.add('show');
+        if (bannerHideTimer) clearTimeout(bannerHideTimer);
+        bannerHideTimer = setTimeout(hideBanner, BANNER_DURATION_MS);
+      }
+
+      function hideBanner() {
+        document.getElementById('banner').classList.remove('show');
+        if (bannerHideTimer) { clearTimeout(bannerHideTimer); bannerHideTimer = null; }
+      }
+
+      document.getElementById('banner').addEventListener('click', hideBanner);
+
+      // ── Leaderboard state ──────────────────────────────────
+      // Keyed by userId — only VR clients that send PLAYER_POSITION
+      // appear. Portal/observer connections have no stats so they're
+      // silently excluded.
+      const playerStats = new Map();
+
+      function updatePlayerStats(userId, s) {
+        if (!s) return;
+        // Portal's own connection never sends stats; bail if the packet
+        // has no score field at all (e.g. legacy position-only messages).
+        const hasStats =
+          s.score != null || s.health != null || s.goalsCollected != null;
+        if (!hasStats) return;
+        playerStats.set(userId, {
+          score: s.score ?? 0,
+          health: s.health ?? 100,
+          goalsCollected: s.goalsCollected ?? 0,
+          goalsTotal: s.goalsTotal ?? 0,
+        });
+        renderLeaderboard();
+      }
+
+      function renderLeaderboard() {
+        const entriesEl = document.getElementById('lb-entries');
+        const countEl   = document.getElementById('lb-count');
+        const rows = [...playerStats.entries()];
+
+        // Rank by goals collected first (primary objective), then raw score,
+        // then health as a tiebreaker. Fits the game's scoring intent.
+        rows.sort((a, b) => {
+          const ga = a[1].goalsCollected, gb = b[1].goalsCollected;
+          if (ga !== gb) return gb - ga;
+          if (a[1].score !== b[1].score) return b[1].score - a[1].score;
+          return b[1].health - a[1].health;
+        });
+
+        countEl.textContent = rows.length;
+
+        if (rows.length === 0) {
+          entriesEl.innerHTML = '<div class="lb-empty">Waiting for VR players…</div>';
+          return;
+        }
+
+        entriesEl.innerHTML = rows.map(([userId, s], i) => {
+          const color = colorForUser(userId);
+          const short = userId.slice(0, 6);
+          const label = userId === myUserId ? `${short} (you)` : short;
+          const progress = s.goalsTotal > 0
+            ? `${s.goalsCollected}/${s.goalsTotal}`
+            : String(s.score);
+          const hpClass =
+            s.health <= 25 ? ' critical' :
+            s.health <= 50 ? ' warning' : '';
+          return (
+            `<div class="lb-row lb-rank-${i + 1}">` +
+              `<span class="lb-dot" style="--pcolor: ${color.solid}"></span>` +
+              `<span class="lb-name">${label}</span>` +
+              `<span class="lb-score">⭐ ${progress}</span>` +
+              `<span class="lb-health${hpClass}">${Math.ceil(s.health)}</span>` +
+            `</div>`
+          );
+        }).join('');
       }
 
       function updatePlayer(userId, pos) {
@@ -679,11 +1244,13 @@
             const item = state.get(key);
             cell.classList.remove('occupied');
             cell.removeAttribute('draggable');
+            delete cell.dataset.role;
             if (cell._dragStart) { cell.removeEventListener('dragstart', cell._dragStart); cell._dragStart = null; }
             if (cell._dragEnd)   { cell.removeEventListener('dragend',   cell._dragEnd);   cell._dragEnd = null; }
             cell.innerHTML = '';
             if (item) {
               cell.classList.add('occupied');
+              if (item.role) cell.dataset.role = item.role;
               const icon = document.createElement('span');
               icon.textContent = item.icon;
               icon.title = item.label;
@@ -783,11 +1350,31 @@
         cell.addEventListener('dragend', cell._dragEnd);
       }
 
+      // Only one starting-point chair allowed on the grid. Placing a
+      // new one clears the existing one first so the designer never has
+      // to hunt down a duplicate.
+      function findExistingChairKey() {
+        for (const [k, v] of state) {
+          if (v.type === 'chair') return k;
+        }
+        return null;
+      }
+
       // ── State helpers (optimistic + server sync) ─────────────
       function placeItem(key, item) {
-        state.set(key, item);
+        // Always attach a role so VR can branch behavior without parsing icons.
+        const withRole = item.role ? item : { ...item, role: roleFor(item.icon) };
+
+        // Single-chair rule: if the new item is a chair and one already
+        // exists somewhere else, clear the old one first.
+        if (withRole.type === 'chair') {
+          const existing = findExistingChairKey();
+          if (existing && existing !== key) clearCell(existing);
+        }
+
+        state.set(key, withRole);
         syncGrids();
-        wsSend({ type: 'GRID_PLACE', key, item });
+        wsSend({ type: 'GRID_PLACE', key, item: withRole });
       }
 
       function clearCell(key) {
@@ -811,17 +1398,143 @@
         wsSend({ type: 'GRID_CLEAR_ALL' });
       });
 
-      // ── Transmit (force re-sync) ──────────────────────────────
-      document.getElementById('transmit-btn').addEventListener('click', () => {
-        // Re-send all placed items to server (useful if VR reconnects)
-        for (const [key, item] of state.entries()) {
-          wsSend({ type: 'GRID_PLACE', key, item });
+      // ── Round timer ──────────────────────────────────────────
+      // Authoritative timing lives on the server; portal displays a
+      // client-side countdown derived from the server's `endsAt` (ms epoch).
+      // Local tick is just for the visual clock — it never writes state.
+      const startBtn     = document.getElementById('start-round-btn');
+      const durationEl   = document.getElementById('round-duration');
+      const timerDisplay = document.getElementById('timer-display');
+
+      let roundEndsAt = 0;          // ms epoch; 0 when not running
+      let tickHandle  = null;
+
+      function fmtSeconds(s) {
+        const safe = Math.max(0, Math.ceil(s));
+        const mm = String(Math.floor(safe / 60)).padStart(2, '0');
+        const ss = String(safe % 60).padStart(2, '0');
+        return `${mm}:${ss}`;
+      }
+
+      function renderTimer() {
+        const remaining = roundEndsAt
+          ? Math.max(0, (roundEndsAt - Date.now()) / 1000)
+          : parseInt(durationEl.value, 10) || 0;
+        timerDisplay.textContent = fmtSeconds(remaining);
+
+        timerDisplay.classList.remove('running', 'warning', 'critical');
+        if (roundEndsAt) {
+          if (remaining <= 5)       timerDisplay.classList.add('critical');
+          else if (remaining <= 10) timerDisplay.classList.add('warning');
+          else                      timerDisplay.classList.add('running');
         }
-        const btn = document.getElementById('transmit-btn');
-        btn.textContent = '✓ Synced!';
-        btn.style.background = '#10b981';
-        setTimeout(() => { btn.textContent = 'Transmit'; btn.style.background = ''; }, 1500);
+
+        if (roundEndsAt && remaining <= 0) {
+          // Server will broadcast ROUND_END; stop updating locally.
+          stopTick();
+        }
+      }
+
+      function startTick() {
+        if (tickHandle) return;
+        tickHandle = setInterval(renderTimer, 250);
+      }
+      function stopTick() {
+        if (tickHandle) { clearInterval(tickHandle); tickHandle = null; }
+      }
+
+      // Three button states now:
+      //   idle    → "Start Round"
+      //   pending → "Cancel" (VR players are confirming at the chair)
+      //   running → "End Round"
+      let roundPending = false;
+      function setRoundState(s) {
+        roundPending = s === 'pending';
+        const running = s === 'running';
+        if (running)      startBtn.textContent = 'End Round';
+        else if (roundPending) startBtn.textContent = 'Cancel · Waiting for VR…';
+        else              startBtn.textContent = 'Start Round';
+        startBtn.classList.toggle('running', running || roundPending);
+        durationEl.disabled = running || roundPending;
+      }
+      function setRoundRunning(running) { setRoundState(running ? 'running' : 'idle'); }
+
+      durationEl.addEventListener('input', () => { if (!roundEndsAt) renderTimer(); });
+
+      // ── Stage-size slider ──────────────────────────────────
+      // Shrinks the playable grid so it fits a Quest room boundary.
+      // Emoji/pickup sprites + wall sizes don't change — only the cell
+      // positions and the grid/floor geometry scale. Server clamps to
+      // [GRID_SCALE_MIN, GRID_SCALE_MAX] and echoes the value back, so
+      // reflectGridScale() is our single place to update the DOM.
+      const gridScaleEl = document.getElementById('grid-scale');
+      const gridScaleValueEl = document.getElementById('grid-scale-value');
+      function reflectGridScale(scale) {
+        gridScaleEl.value = String(scale);
+        gridScaleValueEl.textContent = scale.toFixed(2) + '×';
+      }
+      gridScaleEl.addEventListener('input', () => {
+        const scale = parseFloat(gridScaleEl.value);
+        gridScaleValueEl.textContent = scale.toFixed(2) + '×';
+        wsSend({ type: 'SET_GRID_SCALE', scale });
       });
+
+      // ── Emoji-size slider ──────────────────────────────────
+      // Grows/shrinks every sprite AND its hitbox together. Doesn't
+      // affect the stage footprint — only how "big" the items feel.
+      const emojiScaleEl = document.getElementById('emoji-scale');
+      const emojiScaleValueEl = document.getElementById('emoji-scale-value');
+      function reflectEmojiScale(scale) {
+        emojiScaleEl.value = String(scale);
+        emojiScaleValueEl.textContent = scale.toFixed(2) + '×';
+      }
+      emojiScaleEl.addEventListener('input', () => {
+        const scale = parseFloat(emojiScaleEl.value);
+        emojiScaleValueEl.textContent = scale.toFixed(2) + '×';
+        wsSend({ type: 'SET_EMOJI_SCALE', scale });
+      });
+
+      // Toast popup for validation messages — single global element reused
+      // each time. Auto-dismiss after a few seconds.
+      function showToast(text) {
+        let t = document.getElementById('toast');
+        if (!t) {
+          t = document.createElement('div');
+          t.id = 'toast';
+          t.className = 'toast';
+          document.body.appendChild(t);
+        }
+        t.innerHTML = text;
+        t.classList.add('show');
+        clearTimeout(showToast._timer);
+        showToast._timer = setTimeout(() => t.classList.remove('show'), 3500);
+      }
+
+      startBtn.addEventListener('click', () => {
+        if (roundEndsAt) {
+          // Currently running → ask server to end.
+          wsSend({ type: 'ROUND_END', reason: 'host-stopped' });
+        } else if (roundPending) {
+          // Pending → cancel the ready-check.
+          wsSend({ type: 'ROUND_CANCEL' });
+        } else {
+          // Require a starting-point chair on the grid before requesting.
+          const chairKey = findExistingChairKey();
+          if (!chairKey) {
+            showToast(
+              'Please add a <span style="font-size:18px">🪑</span> <b>starting point</b> to the map before starting.',
+            );
+            return;
+          }
+          const duration = Math.max(5, Math.min(600, parseInt(durationEl.value, 10) || 30));
+          durationEl.value = duration;
+          // Ask the server to enter pending state; VR players need to
+          // walk to the chair and press SELECT to actually start.
+          wsSend({ type: 'ROUND_REQUEST', duration });
+        }
+      });
+
+      renderTimer();
 
       syncGrids();
     </script>

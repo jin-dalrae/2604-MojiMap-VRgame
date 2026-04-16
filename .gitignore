@@ -65,3 +65,7 @@ coverage/
 public/gltf/generated/
 public/glxf/
 public/ui/
+.vercel
+
+# Local chat log (huge, not relevant to the codebase)
+chat-history.txt

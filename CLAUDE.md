@@ -2,6 +2,18 @@
 
 This file configures Claude Code for IWSDK (Immersive Web SDK) project development.
 
+## Prompt Logging (ALWAYS)
+
+Maintain a file named `prompt.md` at the project root that records every prompt the user inputs.
+
+- If `prompt.md` does not exist, create it with a top-level heading `# Prompt Log`.
+- For EVERY user prompt received, append a new entry to `prompt.md` BEFORE doing other work.
+- Entry format:
+  - A `## ` heading with an ISO 8601 timestamp (e.g. `## 2026-04-14T10:32:00Z`)
+  - The verbatim text of the user's prompt in a fenced block below it
+- Never modify or delete previous entries — only append.
+- Do this for all prompts, including short or conversational ones.
+
 ## Project Structure
 
 ```
