@@ -95,11 +95,22 @@
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(20, var(--cell-size));
-        grid-template-rows: repeat(10, var(--cell-size));
-        gap: 0; /* Continuous walls need 0 gap */
+        grid-template-columns: 20px repeat(20, var(--cell-size));
+        grid-template-rows: 20px repeat(10, var(--cell-size));
+        gap: 0;
         background: var(--cell-border);
         border: 1px solid var(--cell-border);
+      }
+
+      .grid-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: var(--muted);
+        font-family: ui-monospace, monospace;
+        background: var(--surface);
+        pointer-events: none;
       }
 
       .cell {
@@ -361,7 +372,19 @@
       function clearCell(key) { state.delete(key); syncGrid(); wsSend({ type: 'GRID_CLEAR', key }); }
 
       const gridEl = document.getElementById('grid');
+      
+      // Header row for labels (0-19)
+      const corner = document.createElement('div'); corner.className = 'grid-label'; gridEl.appendChild(corner);
+      for (let c = 0; c < COLS; c++) {
+        const lbl = document.createElement('div'); lbl.className = 'grid-label'; lbl.textContent = c;
+        gridEl.appendChild(lbl);
+      }
+
       for (let r = 0; r < ROWS; r++) {
+        // Row label (0-9)
+        const rowLbl = document.createElement('div'); rowLbl.className = 'grid-label'; rowLbl.textContent = r;
+        gridEl.appendChild(rowLbl);
+
         for (let c = 0; c < COLS; c++) {
           const cell = document.createElement('div');
           cell.className = 'cell' + ((r+c)%2 ? ' alt' : '');

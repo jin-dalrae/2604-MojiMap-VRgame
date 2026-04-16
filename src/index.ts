@@ -33,6 +33,9 @@ import {
   Float32BufferAttribute,
   LineBasicMaterial,
   LineSegments,
+  Sprite,
+  SpriteMaterial,
+  CanvasTexture,
 } from "@iwsdk/core";
 
 import { PortalSystem } from "./portal.js";
@@ -144,6 +147,36 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC })
       .addComponent(GlitchFloor, { material: glitchMat });
     stageEntities.push(floorEntity);
+
+    // ── Grid Coordinate Markers ──────────────────────────────
+    // Add floating digits along the West (row) and South (col) edges
+    const createMarker = (text: string, x: number, z: number) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64; canvas.height = 64;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#6366f1';
+      ctx.font = 'bold 48px monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(text, 32, 32);
+      
+      const tex = new CanvasTexture(canvas);
+      const spriteMat = new SpriteMaterial({ map: tex, transparent: true, opacity: 0.8 });
+      const sprite = new Sprite(spriteMat);
+      sprite.position.set(x, 0.4, z);
+      sprite.scale.set(0.35 * scale, 0.35 * scale, 1);
+      
+      const e = world.createTransformEntity(sprite);
+      stageEntities.push({ dispose: () => { e.dispose(); tex.dispose(); spriteMat.dispose(); } });
+    };
+
+    // Col markers (South edge)
+    for (let i = 0; i < cols; i++) {
+        createMarker(String(i), -halfW + i * cell + cell/2, halfD + 0.3);
+    }
+    // Row markers (West edge)
+    for (let j = 0; j < rows; j++) {
+        createMarker(String(j), -halfW - 0.3, -halfD + j * cell + cell/2);
+    }
   });
 
   // Invisible safety floor — same on both pages. Spectator doesn't
