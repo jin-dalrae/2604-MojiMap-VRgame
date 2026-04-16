@@ -12,6 +12,7 @@ import {
   DoubleSide,
   Object3D,
 } from "@iwsdk/core";
+import { createGridItem } from "./grid-items.js";
 
 // ── Grid coordinate mapping ──────────────────────────────────
 // Portal grid: 20 cols × 10 rows
@@ -77,7 +78,7 @@ export class PortalSystem extends createSystem({}) {
   private ws: WebSocket | null = null;
   private spawnedEntities = new Map<
     string,
-    { entity: { dispose(): void }; sprite: Sprite }
+    { entity: { dispose(): void }; object: Object3D }
   >();
   private avatars = new Map<string, AvatarRecord>();
   private lastPosSend = 0;
@@ -248,19 +249,32 @@ export class PortalSystem extends createSystem({}) {
     const [row, col] = key.split(',').map(Number);
     const [x, y, z] = gridToWorld(row, col);
 
-    const sprite = makeEmojiSprite(item.icon, 1.1);
-    sprite.position.set(x, y, z);
+    // Create 3D model for the item type
+    const object = createGridItem(item.type);
+    if (!object) return;
 
-    const entity = this.world.createTransformEntity(sprite);
-    this.spawnedEntities.set(key, { entity, sprite });
+    object.position.set(x, 0, z); // y=0, items sit on floor
+    const entity = this.world.createTransformEntity(object);
+    this.spawnedEntities.set(key, { entity, object });
   }
 
   private despawnItem(key: string) {
     const record = this.spawnedEntities.get(key);
     if (!record) return;
-    const mat = record.sprite.material as SpriteMaterial;
-    if (mat.map) mat.map.dispose();
-    mat.dispose();
+
+    // Dispose all meshes in the group
+    record.object.traverse((child: Object3D) => {
+      if ((child as Mesh).isMesh) {
+        const mesh = child as Mesh;
+        mesh.geometry?.dispose();
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(m => m.dispose());
+        } else {
+          mesh.material?.dispose();
+        }
+      }
+    });
+
     record.entity.dispose();
     this.spawnedEntities.delete(key);
   }
