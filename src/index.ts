@@ -3,10 +3,6 @@ import {
   PlaneGeometry,
   SessionMode,
   World,
-  LineSegments,
-  LineBasicMaterial,
-  BufferGeometry,
-  Float32BufferAttribute,
   MeshStandardMaterial,
   EnvironmentType,
   LocomotionEnvironment,
@@ -14,6 +10,7 @@ import {
 
 import { PortalSystem } from "./portal.js";
 import { SyncSystem } from "./sync.js";
+import { createGlitchFloorMaterial, GlitchFloor, GlitchFloorSystem } from "./glitch-floor.js";
 
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
   xr: {
@@ -38,47 +35,18 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
 
   world
     .registerSystem(PortalSystem)
-    .registerSystem(SyncSystem);
+    .registerSystem(SyncSystem)
+    .registerSystem(GlitchFloorSystem);
 
-  // ── Grid Floor (20 cols × 10 rows, 1m square cells) ───────
-  {
-    const cols = 20, rows = 10, cell = 1;
-    const halfW = (cols * cell) / 2;
-    const halfD = (rows * cell) / 2;
-    const verts: number[] = [];
-    for (let i = 0; i <= cols; i++) {
-      const x = -halfW + i * cell;
-      verts.push(x, 0, -halfD, x, 0, halfD);
-    }
-    for (let j = 0; j <= rows; j++) {
-      const z = -halfD + j * cell;
-      verts.push(-halfW, 0, z, halfW, 0, z);
-    }
-    const geo = new BufferGeometry();
-    geo.setAttribute("position", new Float32BufferAttribute(verts, 3));
-    const mat = new LineBasicMaterial({
-      color: 0x6366f1,
-      transparent: true,
-      opacity: 0.8,
-    });
-    const gridLines = new LineSegments(geo, mat);
-    gridLines.position.y = 0.01;
-    world.createTransformEntity(gridLines);
-  }
-
-  // Visible floor under the grid
+  // ── Glitch Floor (20 cols × 10 rows) ──────────────────────
   const floorGeom = new PlaneGeometry(20, 10);
   floorGeom.rotateX(-Math.PI / 2);
-  const floorMat = new MeshStandardMaterial({
-    color: 0x09090b,
-    transparent: true,
-    opacity: 0.35,
-    roughness: 1.0,
-  });
-  const floorMesh = new Mesh(floorGeom, floorMat);
-  world
-    .createTransformEntity(floorMesh)
-    .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
+  const glitchMat = createGlitchFloorMaterial();
+  const floorMesh = new Mesh(floorGeom, glitchMat);
+  const floorEntity = world.createTransformEntity(floorMesh);
+  floorEntity
+    .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC })
+    .addComponent(GlitchFloor, { material: glitchMat });
 
   // Invisible extended floor so the player can't fall off the edge.
   // 200×200 covers far beyond anywhere they could walk.
