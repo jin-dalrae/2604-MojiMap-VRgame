@@ -8,19 +8,19 @@
       * { box-sizing: border-box; margin: 0; padding: 0; }
 
       :root {
-        --bg: #09090b;
-        --surface: #111113;
-        --surface2: #18181b;
-        --border: #27272a;
-        --border2: #3f3f46;
+        --bg: #f8f9fb;
+        --surface: #ffffff;
+        --surface2: #f0f1f3;
+        --border: #e2e4e9;
+        --border2: #c9ccd2;
         --accent: #6366f1;
-        --accent-dim: rgba(99,102,241,0.15);
+        --accent-dim: rgba(99,102,241,0.10);
         --accent-hover: #4f46e5;
-        --text: #fafafa;
+        --text: #1a1a2e;
         --muted: #71717a;
-        --cell-bg: #16161a;
-        --cell-alt: #18181d;
-        --cell-border: #222226;
+        --cell-bg: #ffffff;
+        --cell-alt: #f5f6f8;
+        --cell-border: #e2e4e9;
         --cell-size: 48px;
         --success: #10b981;
       }
@@ -94,7 +94,7 @@
 
       .palette::-webkit-scrollbar { width: 4px; }
       .palette::-webkit-scrollbar-track { background: transparent; }
-      .palette::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+      .palette::-webkit-scrollbar-thumb { background: #c9ccd2; border-radius: 2px; }
 
       .palette-section { font-size: 10px; color: var(--muted); text-transform: uppercase;
         letter-spacing: 0.1em; padding: 8px 6px 4px; }
@@ -111,7 +111,7 @@
         user-select: none;
         transition: background 0.1s, border-color 0.1s;
         font-size: 12px;
-        color: #d4d4d8;
+        color: #3f3f46;
       }
       .item:hover { background: var(--surface2); border-color: var(--border); }
       .item:active { cursor: grabbing; }
@@ -145,18 +145,18 @@
       /* Grid board */
       .grid-board {
         position: relative;
-        background: #0d0d10;
+        background: #f0f1f3;
         border: 1px solid var(--border);
         border-radius: 6px;
         padding: 6px;
-        box-shadow: 0 0 0 1px #0005, 0 8px 32px rgba(0,0,0,0.6);
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
       }
 
       /* Compass labels */
       .compass {
         position: absolute;
         font-size: 9px;
-        color: #3f3f46;
+        color: #b0b3ba;
         font-weight: 500;
         letter-spacing: 0.05em;
         pointer-events: none;
@@ -247,6 +247,103 @@
         vertical-align: middle;
       }
 
+      /* ── Player marker ── */
+      .player-marker {
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #6366f1 30%, rgba(99,102,241,0.3) 70%);
+        border: 2px solid #6366f1;
+        z-index: 10;
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+        transition: left 0.15s ease-out, top 0.15s ease-out;
+        box-shadow: 0 0 12px rgba(99,102,241,0.5);
+      }
+      .player-marker::after {
+        content: '';
+        position: absolute;
+        inset: -4px;
+        border-radius: 50%;
+        border: 2px solid rgba(99,102,241,0.4);
+        animation: player-ping 1.5s ease-out infinite;
+      }
+      .player-marker .player-label {
+        position: absolute;
+        top: -20px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 9px;
+        font-weight: 700;
+        color: #6366f1;
+        white-space: nowrap;
+        letter-spacing: 0.04em;
+        text-shadow: 0 1px 3px rgba(255,255,255,0.8);
+      }
+      .player-marker .player-arrow {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-bottom: 8px solid #6366f1;
+        transform-origin: center 4px;
+        transform: translate(-50%, -50%);
+        transition: transform 0.15s ease-out;
+      }
+      @keyframes player-ping {
+        0% { transform: scale(1); opacity: 0.6; }
+        100% { transform: scale(2); opacity: 0; }
+      }
+      .player-offline .player-marker {
+        opacity: 0.25;
+        filter: grayscale(1);
+      }
+      .player-offline .player-marker::after { animation: none; }
+
+      /* ── 3D view ── */
+      .grid-area { perspective: 1200px; }
+
+      .grid-board {
+        transform-style: preserve-3d;
+        transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .view-3d .grid-board {
+        transform: rotateX(55deg) rotateZ(-10deg) scale(0.85);
+      }
+
+      .view-3d .cell {
+        transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.08s, border-color 0.08s;
+        transform-style: preserve-3d;
+      }
+
+      .view-3d .cell.occupied {
+        transform: translateZ(18px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+      }
+
+      .view-3d .player-marker {
+        transform: translate(-50%, -50%) translateZ(24px);
+      }
+
+      .view-3d .compass { display: none; }
+
+      /* ── View toggle btn ── */
+      .btn-view {
+        background: var(--surface2);
+        color: var(--muted);
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .btn-view:hover { color: var(--text); border-color: var(--border2); }
+      .btn-view .view-icon { font-size: 14px; }
+
       /* ── Custom drag image ── */
       #drag-ghost {
         position: fixed;
@@ -263,6 +360,7 @@
     <header>
       <h1>⬡ XR Grid Planner</h1>
       <div class="header-actions">
+        <button class="btn btn-view" id="view-toggle"><span class="view-icon">🧊</span> 3D</button>
         <button class="btn btn-ghost" id="clear-btn">Clear All</button>
         <button class="btn btn-primary" id="transmit-btn">Transmit to Space</button>
       </div>
@@ -278,23 +376,21 @@
 
         <div class="palette-section">Furniture</div>
         <div class="item" draggable="true" data-type="chair"    data-icon="🪑" data-label="Chair">    <span class="item-icon">🪑</span>Chair</div>
-        <div class="item" draggable="true" data-type="table"    data-icon="🪵" data-label="Table">    <span class="item-icon">🪵</span>Table</div>
-        <div class="item" draggable="true" data-type="lamp"     data-icon="💡" data-label="Lamp">     <span class="item-icon">💡</span>Lamp</div>
-        <div class="item" draggable="true" data-type="plant"    data-icon="🌿" data-label="Plant">    <span class="item-icon">🌿</span>Plant</div>
-        <div class="item" draggable="true" data-type="screen"   data-icon="🖥️" data-label="Screen">   <span class="item-icon">🖥️</span>Screen</div>
 
-        <div class="palette-section">Effects</div>
-        <div class="item" draggable="true" data-type="fire"     data-icon="🔥" data-label="Fire">     <span class="item-icon">🔥</span>Fire</div>
-        <div class="item" draggable="true" data-type="portal"   data-icon="🌀" data-label="Portal">   <span class="item-icon">🌀</span>Portal</div>
-        <div class="item" draggable="true" data-type="star"     data-icon="⭐" data-label="Star">     <span class="item-icon">⭐</span>Star</div>
-        <div class="item" draggable="true" data-type="music"    data-icon="🎵" data-label="Music">    <span class="item-icon">🎵</span>Music</div>
-        <div class="item" draggable="true" data-type="robot"    data-icon="🤖" data-label="Robot">    <span class="item-icon">🤖</span>Robot</div>
+        <div class="palette-section">Enemy</div>
+        <div class="item" draggable="true" data-type="ghost"    data-icon="👻" data-label="Ghost">    <span class="item-icon">👻</span>Ghost</div>
+        <div class="item" draggable="true" data-type="bird"     data-icon="🦅" data-label="Bird">     <span class="item-icon">🦅</span>Bird</div>
+        <div class="item" draggable="true" data-type="snowman"  data-icon="⛄️" data-label="Snowman">  <span class="item-icon">⛄️</span>Snowman</div>
+
+        <div class="palette-section">Weapon</div>
+        <div class="item" draggable="true" data-type="hammer"   data-icon="🔨" data-label="Hammer">   <span class="item-icon">🔨</span>Hammer</div>
+        <div class="item" draggable="true" data-type="gun"      data-icon="🔫" data-label="Gun">      <span class="item-icon">🔫</span>Gun</div>
       </div>
 
       <!-- Grid area -->
       <div class="grid-area">
         <div class="grid-meta">
-          <span>Birds Eye · 10×10</span>
+          <span id="view-label">Birds Eye · 10×10</span>
           <span class="view-hint">drag items onto grid · click × to remove · drag to reposition</span>
         </div>
 
@@ -304,6 +400,10 @@
           <span class="compass compass-w">W</span>
           <span class="compass compass-e">E</span>
           <div class="grid" id="grid"></div>
+          <div class="player-marker" id="player-marker" style="display:none;">
+            <span class="player-label">QUEST</span>
+            <span class="player-arrow"></span>
+          </div>
         </div>
       </div>
     </main>
@@ -498,6 +598,86 @@
           btn.textContent = 'Transmit to Space';
           btn.style.background = '';
         }, 1500);
+      });
+
+      // ── Player marker (Quest headset tracking) ──────────────
+      const playerMarker = document.getElementById('player-marker');
+      const playerArrow  = playerMarker.querySelector('.player-arrow');
+      const gridBoard    = document.querySelector('.grid-board');
+      const syncChannel  = new BroadcastChannel('xr-sync');
+
+      // World-space bounds that map to the 10x10 grid
+      // Grid center = world origin, each cell = 1 meter
+      const GRID_WORLD_SIZE = 10; // 10m x 10m area
+      const GRID_HALF = GRID_WORLD_SIZE / 2;
+
+      let playerOnline = false;
+      let playerTimeout = null;
+
+      syncChannel.onmessage = (event) => {
+        const data = event.data;
+        if (data.type !== 'SYNC_UPDATES') return;
+
+        const headUpdate = data.updates.find(u => u.id === 'player_head');
+        if (!headUpdate) return;
+
+        // Mark player as online
+        if (!playerOnline) {
+          playerOnline = true;
+          playerMarker.style.display = '';
+          gridBoard.classList.remove('player-offline');
+        }
+
+        // Reset offline timer (3s without data = offline)
+        clearTimeout(playerTimeout);
+        playerTimeout = setTimeout(() => {
+          playerOnline = false;
+          gridBoard.classList.add('player-offline');
+        }, 3000);
+
+        // Map world XZ -> grid pixel position
+        // World X -> grid column (left-right), World Z -> grid row (top-bottom)
+        const worldX = headUpdate.pos[0];
+        const worldZ = headUpdate.pos[2];
+
+        // Normalize to 0..1 range across the grid
+        const normX = (worldX + GRID_HALF) / GRID_WORLD_SIZE;
+        const normZ = (worldZ + GRID_HALF) / GRID_WORLD_SIZE;
+
+        // Clamp to grid bounds
+        const cx = Math.max(0, Math.min(1, normX));
+        const cz = Math.max(0, Math.min(1, normZ));
+
+        // Convert to pixel offset within the grid element
+        const gridRect = gridEl.getBoundingClientRect();
+        const boardRect = gridBoard.getBoundingClientRect();
+        const offsetX = gridEl.offsetLeft + cx * gridEl.offsetWidth;
+        const offsetY = gridEl.offsetTop + cz * gridEl.offsetHeight;
+
+        playerMarker.style.left = offsetX + 'px';
+        playerMarker.style.top  = offsetY + 'px';
+
+        // Heading from quaternion (yaw around Y axis)
+        const qx = headUpdate.rot[0], qy = headUpdate.rot[1];
+        const qz = headUpdate.rot[2], qw = headUpdate.rot[3];
+        const yaw = Math.atan2(2 * (qw * qy + qx * qz), 1 - 2 * (qy * qy + qz * qz));
+        const deg = (-yaw * 180 / Math.PI);
+        playerArrow.style.transform = `translate(-50%, -50%) rotate(${deg}deg)`;
+      };
+
+      // ── 2D / 3D View Toggle ─────────────────────────────────
+      const gridArea   = document.querySelector('.grid-area');
+      const viewBtn    = document.getElementById('view-toggle');
+      const viewLabel  = document.getElementById('view-label');
+      let is3D = false;
+
+      viewBtn.addEventListener('click', () => {
+        is3D = !is3D;
+        gridArea.classList.toggle('view-3d', is3D);
+        viewBtn.innerHTML = is3D
+          ? '<span class="view-icon">📐</span> 2D'
+          : '<span class="view-icon">🧊</span> 3D';
+        viewLabel.textContent = is3D ? 'Isometric · 10×10' : 'Birds Eye · 10×10';
       });
     </script>
   </body>
