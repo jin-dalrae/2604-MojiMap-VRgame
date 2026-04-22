@@ -582,3 +582,15 @@ i want the most advanced game system that my friends made. then, is the portal p
 ```
 we need the 2d imgs that is added. let's get back the portal, and put the 2d img again on that. can we do that with a?
 ```
+
+## 2026-04-22T00:09:00Z
+
+```
+let's make a new portal page, to fit in mobile web page that people can attack easily with emojis. it should not be scrollable
+```
+
+## 2026-04-22T00:10:00Z
+
+```
+1 a 2 refinement 3 all  existing ones
+```

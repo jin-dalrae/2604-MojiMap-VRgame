@@ -1,0 +1,419 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>MojiMap Attack</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --bg: #09090b;
+        --surface: #111113;
+        --surface2: #18181b;
+        --border: #27272a;
+        --accent: #6366f1;
+        --accent-dim: rgba(99,102,241,0.15);
+        --text: #fafafa;
+        --muted: #71717a;
+        --cell-bg: #16161a;
+        --cell-alt: #18181d;
+        --cell-border: #222226;
+        --success: #10b981;
+      }
+
+      html, body {
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      }
+
+      /* Single viewport, column layout, no scroll anywhere. */
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100dvh;
+      }
+
+      /* ── Header ── */
+      header {
+        height: 44px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 0 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+      }
+
+      h1 { font-size: 13px; color: var(--accent); letter-spacing: 0.5px; }
+
+      .timer-display {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .timer-display.running  { color: var(--success); }
+      .timer-display.warning  { color: #f59e0b; }
+      .timer-display.critical { color: #ef4444; }
+
+      .btn {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+      }
+      .btn-primary         { background: var(--accent); color: #fff; }
+      .btn-primary.running { background: #ef4444; }
+
+      /* ── Mini grid viz (auto-fits viewport, never scrolls) ── */
+      /* The grid is 8×8 and lives in the middle band. It locks to the
+         smaller of (available height) and (available width), always square. */
+      .grid-wrap {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+        min-height: 0; /* let flex shrink below its content size */
+      }
+      .grid {
+        width: min(calc(100dvh - 220px), calc(100vw - 24px));
+        aspect-ratio: 1;
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        grid-template-rows:    repeat(8, 1fr);
+        gap: 0;
+        background: var(--cell-border);
+        border: 1px solid var(--cell-border);
+        border-radius: 6px;
+        overflow: hidden;
+        position: relative;
+      }
+      .cell {
+        background: var(--cell-bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: clamp(16px, 5vmin, 34px);
+        position: relative;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .cell.alt { background: var(--cell-alt); }
+      .cell.occupied {
+        background: var(--surface2);
+        box-shadow: inset 0 0 8px rgba(99,102,241,0.25);
+      }
+      .cell.flash {
+        animation: flash 0.4s ease-out;
+      }
+      @keyframes flash {
+        0%   { background: rgba(239,68,68,0.7); transform: scale(1.15); }
+        100% { background: var(--surface2);     transform: scale(1);    }
+      }
+
+      .players-layer { position: absolute; inset: 0; pointer-events: none; }
+      .player-dot {
+        position: absolute;
+        width: 10px; height: 10px;
+        background: var(--pcolor, #6366f1);
+        border: 2px solid #fff;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 8px var(--pcolor-glow, rgba(99,102,241,0.7));
+        transition: left 0.1s, top 0.1s;
+      }
+
+      /* ── Attack palette (bottom) — every item tappable, no horizontal scroll ── */
+      .palette {
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        padding: 8px 8px 10px;
+        flex-shrink: 0;
+        display: grid;
+        /* Fixed 5 columns so up to 15 items fit in a 3-row strip, no scroll */
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+      }
+      .item {
+        aspect-ratio: 1;
+        min-height: 48px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        transition: transform 0.08s, border-color 0.08s, background 0.08s;
+      }
+      .item:active {
+        transform: scale(0.92);
+        border-color: var(--accent);
+        background: var(--accent-dim);
+      }
+      .item.cooldown { opacity: 0.4; pointer-events: none; }
+      .item-icon  { font-size: clamp(18px, 4.5vmin, 28px); line-height: 1; }
+      .item-label { font-size: 9px; color: var(--muted); }
+
+      /* ── Toast ── */
+      .toast {
+        position: fixed;
+        bottom: calc(env(safe-area-inset-bottom, 0) + 180px);
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: rgba(0,0,0,0.9);
+        border: 1px solid var(--border);
+        color: #fff;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        opacity: 0;
+        transition: all 0.3s;
+        pointer-events: none;
+        z-index: 1000;
+      }
+      .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+      /* ── Banner ── */
+      .banner {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.8);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        padding: 20px;
+      }
+      .banner.show { display: flex; }
+      .banner-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        padding: 30px;
+        border-radius: 12px;
+        text-align: center;
+        width: 100%;
+        max-width: 300px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>MojiMap · Attack</h1>
+      <div class="timer-display" id="timer-display">— : —</div>
+      <button class="btn btn-primary" id="start-round-btn">Start</button>
+    </header>
+
+    <div class="grid-wrap">
+      <div class="grid" id="grid">
+        <div class="players-layer" id="players"></div>
+      </div>
+    </div>
+
+    <div class="palette" id="palette">
+      <div class="item" data-type="sword"        data-icon="🗡️" data-label="Sword"><span class="item-icon">🗡️</span><span class="item-label">Sword</span></div>
+      <div class="item" data-type="gun"          data-icon="🔫" data-label="Squirt"><span class="item-icon">🔫</span><span class="item-label">Squirt</span></div>
+      <div class="item" data-type="poopoodoodoo" data-icon="💩" data-label="Poo"><span class="item-icon">💩</span><span class="item-label">Poo</span></div>
+      <div class="item" data-type="feather"      data-icon="🪶" data-label="Feather"><span class="item-icon">🪶</span><span class="item-label">Feather</span></div>
+      <div class="item" data-type="star"         data-icon="⭐" data-label="Star"><span class="item-icon">⭐</span><span class="item-label">Star</span></div>
+      <div class="item" data-type="bird"         data-icon="🦅" data-label="Bird"><span class="item-icon">🦅</span><span class="item-label">Bird</span></div>
+      <div class="item" data-type="fire"         data-icon="🔥" data-label="Fire"><span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
+      <div class="item" data-type="robot"        data-icon="🤖" data-label="Robot"><span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
+      <div class="item" data-type="ghost"        data-icon="👻" data-label="Ghost"><span class="item-icon">👻</span><span class="item-label">Ghost</span></div>
+      <div class="item" data-type="skull"        data-icon="💀" data-label="Skull"><span class="item-icon">💀</span><span class="item-label">Skull</span></div>
+      <div class="item" data-type="cube"         data-icon="🟦" data-label="Wall"><span class="item-icon">🟦</span><span class="item-label">Wall</span></div>
+      <div class="item" data-type="wood"         data-icon="🟫" data-label="Wood"><span class="item-icon">🟫</span><span class="item-label">Wood</span></div>
+      <div class="item" data-type="chair"        data-icon="🪑" data-label="Start"><span class="item-icon">🪑</span><span class="item-label">Start</span></div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div class="banner" id="banner">
+      <div class="banner-card">
+        <h2 id="banner-reason">VICTORY</h2>
+        <div id="banner-winner" style="margin: 15px 0; font-weight: bold;"></div>
+        <p style="font-size: 11px; color: var(--muted);">Tap to dismiss</p>
+      </div>
+    </div>
+
+    <script>
+      // 8×8 grid must match the VR board (see src/index.ts).
+      const COLS = 8, ROWS = 8;
+      const HALF_C = COLS / 2, HALF_R = ROWS / 2;
+
+      const ROLE_BY_ICON = {
+        '🗡️': 'weapon-sword', '🔫': 'weapon-gun', '💩': 'weapon-poo', '🪶': 'weapon-feather',
+        '⭐': 'goal', '🦅': 'bird',
+        '🔥': 'obstacle-damage', '🤖': 'enemy', '👻': 'enemy', '💀': 'enemy',
+        '🪑': 'spawn',
+      };
+      function roleFor(icon) { return ROLE_BY_ICON[icon] || 'decor'; }
+
+      const WS_URL = location.hostname === 'localhost'
+        ? 'ws://localhost:3001'
+        : 'wss://questproto-725835663363.us-west1.run.app';
+
+      let ws = null, wsReady = false, myUserId = null;
+      const state   = new Map();   // "r,c" -> item
+      const players = new Map();
+      let roundEndsAt = 0;
+
+      function wsSend(msg) { if (wsReady) ws.send(JSON.stringify(msg)); }
+
+      function connectWS() {
+        ws = new WebSocket(WS_URL);
+        ws.onopen    = () => { wsReady = true; };
+        ws.onclose   = () => { wsReady = false; setTimeout(connectWS, 2000); };
+        ws.onmessage = (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'WELCOME') {
+            myUserId = msg.userId;
+            state.clear();
+            Object.entries(msg.grid).forEach(([k, v]) => state.set(k, v));
+            syncGrid();
+          } else if (msg.type === 'GRID_UPDATE')    { state.set(msg.key, msg.item); syncGrid(); }
+            else if (msg.type === 'GRID_CLEAR')     { state.delete(msg.key);        syncGrid(); }
+            else if (msg.type === 'GRID_CLEAR_ALL') { state.clear();                syncGrid(); }
+            else if (msg.type === 'PLAYER_POSITION'){ updatePlayer(msg.userId, msg.position); }
+            else if (msg.type === 'ROUND_START')    { roundEndsAt = msg.endsAt; startTick(); }
+            else if (msg.type === 'ROUND_END')      { roundEndsAt = 0; showBanner(msg.reason); }
+        };
+      }
+
+      // Build the 8×8 cell grid once.
+      const gridEl = document.getElementById('grid');
+      const cellByKey = new Map();
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell' + ((r + c) % 2 ? ' alt' : '');
+          cell.dataset.r = r; cell.dataset.c = c;
+          gridEl.insertBefore(cell, document.getElementById('players'));
+          cellByKey.set(`${r},${c}`, cell);
+        }
+      }
+
+      function syncGrid() {
+        for (const [key, cell] of cellByKey.entries()) {
+          const item = state.get(key);
+          cell.textContent = item ? item.icon : '';
+          cell.classList.toggle('occupied', !!item);
+        }
+      }
+
+      // Tap an emoji in the palette → pick a random empty cell, send it.
+      // If the board is full we overwrite any random cell so taps still land.
+      function pickRandomCellKey() {
+        const empty = [];
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const k = `${r},${c}`;
+            if (!state.has(k)) empty.push(k);
+          }
+        }
+        if (empty.length) return empty[Math.floor(Math.random() * empty.length)];
+        // Fallback: any cell (tap never feels dead).
+        const r = Math.floor(Math.random() * ROWS);
+        const c = Math.floor(Math.random() * COLS);
+        return `${r},${c}`;
+      }
+
+      function attack(el) {
+        const item = {
+          type:  el.dataset.type,
+          icon:  el.dataset.icon,
+          label: el.dataset.label,
+          role:  roleFor(el.dataset.icon),
+        };
+        const key = pickRandomCellKey();
+        state.set(key, item);
+        syncGrid();
+        wsSend({ type: 'GRID_PLACE', key, item });
+
+        // Visual feedback on the targeted cell.
+        const cell = cellByKey.get(key);
+        if (cell) {
+          cell.classList.remove('flash');
+          // force reflow so the animation restarts if rapidly tapped
+          void cell.offsetWidth;
+          cell.classList.add('flash');
+        }
+      }
+
+      document.querySelectorAll('.item').forEach(el => {
+        el.addEventListener('click', () => attack(el));
+      });
+
+      // Dot overlay: convert world (x,z) back to grid cell indices and plot.
+      // VR board is 8×8 with gridScale cells; col c → x = (c + 0.5 − HALF_C) * cell.
+      // We invert to col = x/cell + HALF_C − 0.5. But WS only sends world x/z;
+      // we render proportionally to grid span instead, so it scales with the
+      // board visualization regardless of the live scale value.
+      function updatePlayer(id, pos) {
+        if (!pos) return;
+        let p = players.get(id);
+        if (!p) {
+          p = document.createElement('div');
+          p.className = 'player-dot';
+          document.getElementById('players').appendChild(p);
+          players.set(id, p);
+        }
+        // Normalize x,z to [0, 1] across the board half-extents.
+        // Board spans roughly [-HALF*cell, +HALF*cell]; with 8×8 and
+        // default 0.75m cell that's ±3m. Treat ±3m as the viz extent.
+        const EXT = 3; // meters — matches 8 × 0.75m / 2
+        const u = (pos.x + EXT) / (EXT * 2);
+        const v = (pos.z + EXT) / (EXT * 2);
+        p.style.left = (u * 100) + '%';
+        p.style.top  = (v * 100) + '%';
+      }
+
+      // ── Round timer ──────────────────────────────────────────
+      const timerEl = document.getElementById('timer-display');
+      let tickHandle = null;
+      function startTick() {
+        if (tickHandle) clearInterval(tickHandle);
+        tickHandle = setInterval(() => {
+          if (!roundEndsAt) {
+            clearInterval(tickHandle); tickHandle = null;
+            timerEl.textContent = '— : —';
+            timerEl.className = 'timer-display';
+            return;
+          }
+          const rem = Math.max(0, (roundEndsAt - Date.now()) / 1000);
+          const mm = String(Math.floor(rem / 60)).padStart(2, '0');
+          const ss = String(Math.floor(rem % 60)).padStart(2, '0');
+          timerEl.textContent = `${mm}:${ss}`;
+          timerEl.classList.toggle('running',  rem >= 10);
+          timerEl.classList.toggle('warning',  rem < 10 && rem >= 5);
+          timerEl.classList.toggle('critical', rem < 5);
+        }, 200);
+      }
+
+      function showBanner(reason) {
+        document.getElementById('banner-reason').textContent = String(reason || '').toUpperCase() || 'ROUND OVER';
+        document.getElementById('banner').classList.add('show');
+      }
+      document.getElementById('banner').onclick = () => {
+        document.getElementById('banner').classList.remove('show');
+      };
+
+      document.getElementById('start-round-btn').onclick = () => {
+        if (roundEndsAt) wsSend({ type: 'ROUND_END',     reason: 'host-stopped' });
+        else             wsSend({ type: 'ROUND_REQUEST', duration: 30 });
+      };
+
+      connectWS();
+    </script>
+  </body>
+</html>
