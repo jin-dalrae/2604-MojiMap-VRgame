@@ -528,3 +528,57 @@ lets have these controls in the portal only
 ```
 also make it so i can scale the emoji size on a separate area too (that includes hitbox) and when you are finished with this, upload it to the web on master and make sure it is deployed and same wiht railway and wahtever you need to do.
 ```
+
+## 2026-04-22T00:00:00Z
+
+```
+git commit and push
+```
+
+## 2026-04-22T00:01:00Z
+
+```
+then let's change the branch to 2d-img, and make a new one Apr22 copying it
+```
+
+## 2026-04-22T00:02:00Z
+
+```
+make the grid to 8*8, into vertical shape. in VR, with real-life matching, keep the size of grid same.
+```
+
+## 2026-04-22T00:03:00Z
+
+```
+8*8 square grid, with real-life size to be 6*6
+```
+
+## 2026-04-22T00:04:00Z
+
+```
+i typed npm run dev but can't see the screen on localhost:8001. what should i do
+```
+
+## 2026-04-22T00:05:00Z
+
+```
+thank you for lmk! i got the screen. i think the game system is not the one i think. can you pull the main branch's game system to here?
+```
+
+## 2026-04-22T00:06:00Z
+
+```
+oh we already have it? i thought the portal page looked rather simple.
+```
+
+## 2026-04-22T00:07:00Z
+
+```
+i want the most advanced game system that my friends made. then, is the portal page getting behind from main or master branch?
+```
+
+## 2026-04-22T00:08:00Z
+
+```
+we need the 2d imgs that is added. let's get back the portal, and put the 2d img again on that. can we do that with a?
+```

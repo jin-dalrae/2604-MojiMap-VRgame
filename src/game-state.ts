@@ -126,9 +126,9 @@ export const CHAIR_READY_RADIUS = 0.9; // meters — close enough to the chair
 // the visible grid/floor scale with this, but walls + pickup sprites
 // keep their real-world size so they still feel human-scale. This is
 // a runtime signal (portal page exposes a slider) so tuning doesn't
-// require a reload. 0.8 is the "slightly smaller than a full room"
-// default that fits a typical Quest guardian.
-export const GRID_SCALE_DEFAULT = 0.8;
+// require a reload. 0.75 × 8 cells = 6m on each side, matching a
+// room-scale Quest guardian without exceeding it.
+export const GRID_SCALE_DEFAULT = 0.75;
 export const GRID_SCALE_MIN = 0.4;
 export const GRID_SCALE_MAX = 1.2;
 
@@ -140,7 +140,7 @@ export const EMOJI_SCALE_DEFAULT = 1.0;
 export const EMOJI_SCALE_MIN = 0.4;
 export const EMOJI_SCALE_MAX = 2.0;
 
-// The grid coverage itself (20 cols × 10 rows) doesn't change — only
+// The grid coverage itself (8 cols × 8 rows) doesn't change — only
 // the per-cell size does. Helpers read the current scale signal so
 // every consumer stays in sync with the slider.
 export function currentGridScale(g: Globals): number {
@@ -149,8 +149,8 @@ export function currentGridScale(g: Globals): number {
 export function currentEmojiScale(g: Globals): number {
   return GameState.emojiScale(g).peek();
 }
-export function boardHalfW(g: Globals): number { return 10 * currentGridScale(g); }
-export function boardHalfD(g: Globals): number { return  5 * currentGridScale(g); }
+export function boardHalfW(g: Globals): number { return 4 * currentGridScale(g); }
+export function boardHalfD(g: Globals): number { return 4 * currentGridScale(g); }
 // Skull circle radii cap at the smaller play-space dimension so the
 // orbit at least has a chance of staying on the board.
 export function boardMinDim(g: Globals): number {

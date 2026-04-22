@@ -108,8 +108,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     }
     stageEntities = [];
 
-    // ── Grid Floor (20 cols × 10 rows, scaled cells) ───────────
-    const cols = 20, rows = 10, cell = scale;
+    // ── Grid Floor (8 cols × 8 rows, scaled cells) ───────────
+    const cols = 8, rows = 8, cell = scale;
     const halfW = (cols * cell) / 2;
     const halfD = (rows * cell) / 2;
     const verts: number[] = [];
@@ -133,7 +133,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     stageEntities.push(world.createTransformEntity(gridLines));
 
     // Visible floor sized to match the scaled grid.
-    const floorGeom = new PlaneGeometry(20 * scale, 10 * scale);
+    const floorGeom = new PlaneGeometry(cols * cell, rows * cell);
     floorGeom.rotateX(-Math.PI / 2);
     const floorMat = new MeshStandardMaterial({
       color: 0x09090b,
