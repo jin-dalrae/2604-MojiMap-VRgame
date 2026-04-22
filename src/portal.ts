@@ -4,6 +4,8 @@ import {
   Sprite,
   SpriteMaterial,
   CanvasTexture,
+  TextureLoader,
+  SRGBColorSpace,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -152,6 +154,31 @@ function makeEmojiSprite(
 
   const texture = new CanvasTexture(canvas);
   texture.needsUpdate = true;
+  const material = new SpriteMaterial({
+    map: texture,
+    transparent: true,
+    alphaTest: 0.05,
+    depthWrite: true,
+  });
+  const sprite = new Sprite(material);
+  sprite.scale.set(size, size, 1);
+  return sprite;
+}
+
+// ── 2D PNG art for selected item types ──────────────────────
+// Types listed here render as a PNG billboard (from public/textures/)
+// instead of the emoji canvas sprite. Anything not in this map falls
+// back to makeEmojiSprite.
+const ITEM_TEXTURES: Record<string, string> = {
+  ghost: "/textures/Ghost.png",
+  bird:  "/textures/Bird.png",
+  gun:   "/textures/Gun.png",
+  chair: "/textures/Chair.png",
+};
+const sharedTextureLoader = new TextureLoader();
+function makeTexturedSprite(url: string, size = 1.1): Sprite {
+  const texture = sharedTextureLoader.load(url);
+  texture.colorSpace = SRGBColorSpace;
   const material = new SpriteMaterial({
     map: texture,
     transparent: true,
@@ -1010,8 +1037,13 @@ export class PortalSystem extends createSystem({}) {
     }
 
     // Role drives halo/aura in the canvas. Older items placed before the
-    // portal started tagging roles fall back to decor (no halo).
-    const sprite = makeEmojiSprite(item.icon, role, baseSize);
+    // portal started tagging roles fall back to decor (no halo). Types
+    // listed in ITEM_TEXTURES render as PNG billboards instead — those
+    // skip the halo since the art already conveys affordance.
+    const texturedUrl = ITEM_TEXTURES[type];
+    const sprite = texturedUrl
+      ? makeTexturedSprite(texturedUrl, baseSize)
+      : makeEmojiSprite(item.icon, role, baseSize);
     sprite.position.set(x, y, z);
 
     const entity = this.world.createTransformEntity(sprite);
