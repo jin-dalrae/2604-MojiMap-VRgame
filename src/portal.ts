@@ -34,6 +34,10 @@ import {
   MAX_HEALTH,
   GOAL_POINTS,
   POWERUP_HEAL,
+  STAR_HEAL,
+  BARE_HANDS_DAMAGE,
+  BARE_HANDS_RADIUS,
+  BARE_HANDS_MIN_SPEED,
   FIRE_DPS,
   FIRE_RADIUS,
   PICKUP_RADIUS,
@@ -195,6 +199,9 @@ const STICKER_SIZE_FACTOR = 0.702;
 // Chair is the spawn waypoint — 10% larger than regular stickers so it
 // reads as a "walk here to ready up" target.
 const CHAIR_SIZE_MULT = 1.1;
+// Birds fly at BIRD_FLIGHT_HEIGHT (5.7m) — they look tiny from ground
+// level unless bumped up.
+const BIRD_SIZE_MULT = 1.3;
 const sharedTextureLoader = new TextureLoader();
 // `aspect` = width / height. Default 1 keeps the old square behavior;
 // pass the real image aspect to avoid stretching tall art.
@@ -404,6 +411,7 @@ export class PortalSystem extends createSystem({}) {
     GameActions.setSwingSword(globals, () => this.swingSword());
     GameActions.setExplodeAt(globals, (x, y, z, r) => this.explodeAt(x, y, z, r));
     GameActions.setMegaJump(globals, () => this.megaJump());
+    GameActions.setBirdPoop(globals, () => this.makeBirdsPoop());
 
     this.connectWS();
     this.setupKeyboard();
@@ -446,6 +454,7 @@ export class PortalSystem extends createSystem({}) {
       if (item.kind !== 'sprite') continue;
       let mul = ITEM_TEXTURES[item.type] ? STICKER_SIZE_FACTOR : 1;
       if (item.type === 'chair') mul *= CHAIR_SIZE_MULT;
+      if (item.type === 'bird')  mul *= BIRD_SIZE_MULT;
       item.baseSize = baseline * scale * mul;
     }
   }
@@ -1026,9 +1035,11 @@ export class PortalSystem extends createSystem({}) {
     // sprites — their outlines make them read ~25% bigger at the same
     // baseSize, so we scale down to match the emoji visual weight.
     // Chair (spawn point) gets an extra bump so it reads as a waypoint.
+    // Birds fly high so they need to appear bigger to stay visible.
     const texturedUrl = ITEM_TEXTURES[type];
     let sizeMul = texturedUrl ? STICKER_SIZE_FACTOR : 1;
     if (type === 'chair') sizeMul *= CHAIR_SIZE_MULT;
+    if (type === 'bird')  sizeMul *= BIRD_SIZE_MULT;
     // baseSize follows the live emoji-scale slider — sprite.scale is
     // kept in sync later via the emojiScale signal subscription too.
     const baseSize = 1.1 * currentEmojiScale(g) * sizeMul;
@@ -1548,6 +1559,33 @@ export class PortalSystem extends createSystem({}) {
     pos.y = BIRD_FLIGHT_HEIGHT + flap + drift;
   }
 
+  // Voice-triggered bird poop. For every bird currently in flight, drop
+  // a 💩 bomb straight down from its world position — the bomb falls
+  // under gravity and detonates on impact (AoE via BombSystem's normal
+  // state machine). 1.5s cooldown so "kaka kaka kaka" chants don't
+  // carpet-bomb the field.
+  private lastBirdPoopAt = 0;
+  private makeBirdsPoop() {
+    const now = performance.now();
+    if (now - this.lastBirdPoopAt < 1500) return;
+    const g = this.world.globals as Record<string, unknown>;
+    const drop = GameActions.dropBombAt(g);
+    if (!drop) return;
+    let count = 0;
+    for (const item of this.spawnedEntities.values()) {
+      if (item.role !== 'bird' || item.birdState !== 'flying') continue;
+      const p = item.object3D.position;
+      drop(p.x, p.y, p.z);
+      count++;
+    }
+    if (count > 0) {
+      this.lastBirdPoopAt = now;
+      console.log(`[BirdPoop] ${count} bird(s) dropped a bomb`);
+    } else {
+      console.log('[BirdPoop] no flying birds — nothing dropped');
+    }
+  }
+
   // AoE: kill every enemy, bird, and wood block inside a horizontal
   // radius. Called by BombSystem on detonation. Uses XZ distance so the
   // bomb's altitude doesn't need to match grounded targets.
@@ -1586,38 +1624,58 @@ export class PortalSystem extends createSystem({}) {
   // Robots and ghosts get knocked back + stunned on hit; skulls run on
   // a parametric circle so knockback would just look broken.
   private tickSwordContact(deltaSeconds: number) {
-    const globals = this.world.globals as Record<string, unknown>;
-    const tip = globals.swordTip as Object3D | undefined;
-    if (!tip || this.equippedLeft.peek() !== 'sword' || this.isDead.peek()) {
+    if (this.isDead.peek()) {
       this.prevSwordTip = null;
       return;
     }
 
-    // Current tip world position.
-    tip.getWorldPosition(this.tempSwordTip);
+    // Pick a contact source depending on what's in the left hand:
+    //   - Sword equipped → the sword TIP (reach + speed as before).
+    //   - Nothing equipped → the left controller GRIP itself (bare fist).
+    //   - Anything else (🔫 on left is impossible today, but future-proof) → bail.
+    const globals = this.world.globals as Record<string, unknown>;
+    const tip = globals.swordTip as Object3D | undefined;
+    const leftEq = this.equippedLeft.peek();
+    let contact: Object3D | undefined;
+    let damageAmt = 0;
+    let hitRadius = 0;
+    let minSpeed = 0;
+    if (leftEq === 'sword' && tip) {
+      contact = tip;
+      damageAmt = SWORD_DAMAGE;
+      hitRadius = SWORD_RADIUS;
+      minSpeed  = SWORD_MIN_SPEED;
+    } else if (!leftEq) {
+      contact = this.player.gripSpaces.left as unknown as Object3D;
+      damageAmt = BARE_HANDS_DAMAGE;
+      hitRadius = BARE_HANDS_RADIUS;
+      minSpeed  = BARE_HANDS_MIN_SPEED;
+    } else {
+      this.prevSwordTip = null;
+      return;
+    }
+
+    // Current contact world position.
+    contact.getWorldPosition(this.tempSwordTip);
     if (!this.prevSwordTip) {
       this.prevSwordTip = this.tempSwordTip.clone();
       return;
     }
 
-    // Velocity magnitude — require it to exceed SWORD_MIN_SPEED. Clamp
-    // delta to avoid huge spikes on tab-switch / first frame.
+    // Velocity magnitude — require it to exceed the mode's min speed.
     const safeDelta = Math.max(deltaSeconds, 0.001);
     const vx = (this.tempSwordTip.x - this.prevSwordTip.x) / safeDelta;
     const vy = (this.tempSwordTip.y - this.prevSwordTip.y) / safeDelta;
     const vz = (this.tempSwordTip.z - this.prevSwordTip.z) / safeDelta;
     const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
 
-    // Remember this frame's tip position for next frame's velocity calc,
-    // regardless of whether we land a hit.
     this.prevSwordTip.copy(this.tempSwordTip);
 
-    if (speed < SWORD_MIN_SPEED) return;
+    if (speed < minSpeed) return;
 
-    // Scale sword hit radius with emoji size so a bigger enemy is
-    // hittable from proportionally further out.
+    // Scale hit radius with emoji size so bigger enemies stay proportionally reachable.
     const eScale = currentEmojiScale(this.world.globals as Record<string, unknown>);
-    const swordR = SWORD_RADIUS * eScale;
+    const swordR = hitRadius * eScale;
     const swordR2 = swordR * swordR;
     const now = performance.now();
     const leftPad = this.input.gamepads.left;
@@ -1632,7 +1690,7 @@ export class PortalSystem extends createSystem({}) {
 
       if (item.role === 'enemy') {
         item.nextDamageableAt = now + SWORD_HIT_COOLDOWN_MS;
-        const killed = this.damageEnemy(key, SWORD_DAMAGE);
+        const killed = this.damageEnemy(key, damageAmt);
         if (killed) continue;
         // Knockback + stun for ground-motion variants only. Skull's
         // parametric orbit would immediately overwrite pushback.
@@ -1820,6 +1878,12 @@ export class PortalSystem extends createSystem({}) {
       case 'goal':
         this.score.value = this.score.peek() + GOAL_POINTS;
         this.goalsCollected.value = this.goalsCollected.peek() + 1;
+        // Stars also grant a life-point heal so the player can take a
+        // ghost touch or two while racking up goals.
+        this.playerHealth.value = Math.min(
+          MAX_HEALTH,
+          this.playerHealth.peek() + STAR_HEAL,
+        );
         FX.pickupGoal(rightPad ?? leftPad);
         this.checkWin();
         break;

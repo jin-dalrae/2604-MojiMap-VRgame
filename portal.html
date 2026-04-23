@@ -517,6 +517,9 @@
         border-color: var(--accent);
       }
       .item-icon { font-size: 18px; line-height: 1; }
+      /* Bird reads small at grid-cell + palette scale — bump it 5%. */
+      .item[data-type="bird"] .item-icon,
+      .cell[data-type="bird"] > span { font-size: 1.05em; }
       .item-label { font-size: 8px; color: var(--muted); white-space: nowrap; }
       .item.selected .item-label { color: #a5b4fc; }
 
@@ -1254,12 +1257,14 @@
             cell.classList.remove('occupied');
             cell.removeAttribute('draggable');
             delete cell.dataset.role;
+            delete cell.dataset.type;
             if (cell._dragStart) { cell.removeEventListener('dragstart', cell._dragStart); cell._dragStart = null; }
             if (cell._dragEnd)   { cell.removeEventListener('dragend',   cell._dragEnd);   cell._dragEnd = null; }
             cell.innerHTML = '';
             if (item) {
               cell.classList.add('occupied');
               if (item.role) cell.dataset.role = item.role;
+              cell.dataset.type = item.type;           // lets CSS target per-species
               const icon = document.createElement('span');
               icon.textContent = item.icon;
               icon.title = item.label;

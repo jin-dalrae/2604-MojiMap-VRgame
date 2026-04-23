@@ -160,6 +160,8 @@
         object-fit: contain;
         display: block;
       }
+      /* Bird reads a little small at grid-cell scale — bump it 5%. */
+      .sticker-bird { transform: scale(1.05); }
 
       /* Player dots live above the 8×8 data area only — inset matches
          the grid's header label strip so 0–100% maps to the data area. */
@@ -374,8 +376,10 @@
         { type: 'wood',         icon: '🟫', label: 'Wood',    role: 'decor'           },
         { type: 'chair',        icon: '🪑', label: 'Start',   role: 'spawn'           },
       ];
+      // Sticker type is mirrored on the <img> class so CSS can nudge a
+      // specific species without walking the whole tree (bird is +5%).
       const iconHtml = (type, icon) => STICKERS[type]
-        ? `<img src="${STICKERS[type]}" alt="${icon}" />`
+        ? `<img src="${STICKERS[type]}" alt="${icon}" class="sticker sticker-${type}" />`
         : icon;
 
       // Must match src/portal.ts + portal.html — all pages share one WS server.

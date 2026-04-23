@@ -50,6 +50,9 @@ function getOrInit<T>(globals: Globals, key: string, initial: T): Signal<T> {
 export const MAX_HEALTH = 100;
 export const GOAL_POINTS = 1;
 export const POWERUP_HEAL = 25;
+// ⭐ Star pickup — grants both goal progress and a life-point heal.
+// Cheaper than the dedicated powerup since every round is full of stars.
+export const STAR_HEAL = 15;
 export const FIRE_DPS = 30;         // health drain per second inside fire
 export const FIRE_RADIUS = 0.4;     // meters
 export const PICKUP_RADIUS = 0.5;   // meters — player head to item
@@ -80,14 +83,11 @@ export const ENEMY_DEFAULT: EnemyStats = {
 };
 
 export const ENEMY_STATS: Record<string, EnemyStats> = {
-  // 🤖 Territorial guard — only chases when a player is within aggro
-  //     range, otherwise walks home. Hits hard on touch.
-  robot: { hp: 4, speed: 1.5,  dps: 20, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
-  // 👻 Very slow but relentless — also the only enemy that phases
-  //     through walls. Floats + weaves vertically.
-  ghost: { hp: 3, speed: 0.45, dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
-  // 💀 Normal-speed stalker — locks on, occasionally switches targets.
-  skull: { hp: 3, speed: 0.95, dps: 26, killPoints: 1, bobAmp: 0,    bobSpeed: 0   },
+  // HP is uniform at 2 so the combat rule is predictable:
+  //   sword or gun = 1-hit kill, bare hands = 2-hit kill.
+  robot: { hp: 2, speed: 1.5,  dps: 20, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
+  ghost: { hp: 2, speed: 0.45, dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
+  skull: { hp: 2, speed: 0.95, dps: 26, killPoints: 1, bobAmp: 0,    bobSpeed: 0   },
 };
 
 // Per-variant AI behavior flags
@@ -109,13 +109,20 @@ export function enemyStats(type: string): EnemyStats {
   return ENEMY_STATS[type] ?? ENEMY_DEFAULT;
 }
 export const SWORD_RADIUS = 0.6;        // meters — grip-to-enemy
-export const SWORD_DAMAGE = 1;
+export const SWORD_DAMAGE = 2;          // one-shots a 2 HP enemy
 export const SWORD_COOLDOWN_MS = 350;
 export const PROJECTILE_SPEED = 12;     // m/s
 export const PROJECTILE_LIFE_MS = 2500;
 export const PROJECTILE_RADIUS = 0.25;  // collision radius with enemies
-export const PROJECTILE_DAMAGE = 1;
+export const PROJECTILE_DAMAGE = 2;     // watergun one-shots too
 export const GUN_COOLDOWN_MS = 220;     // rate-limit trigger spam
+
+// Bare-handed melee — when the left hand has no sword equipped, the
+// left controller grip itself becomes the contact source. Shorter reach
+// and half the damage of a sword, so it takes 2 hits to down an enemy.
+export const BARE_HANDS_DAMAGE    = 1;
+export const BARE_HANDS_RADIUS    = 0.4;
+export const BARE_HANDS_MIN_SPEED = 4.0;
 
 // Ready-check flow — player must stand near the chair and press SELECT
 // after the portal requests a round, before the round actually starts.
@@ -244,6 +251,9 @@ export type FindEnemyFn = (
 // every enemy/bird inside a radius in one call.
 export type AreaDamageFn = (x: number, y: number, z: number, radius: number) => void;
 
+// Spawn a falling bomb at a world position (zero horizontal velocity).
+export type DropBombFn = (x: number, y: number, z: number) => void;
+
 export const GameActions = {
   damageEnemy: (g: Globals) => g.damageEnemy as DamageFn | undefined,
   setDamageEnemy: (g: Globals, fn: DamageFn) => { g.damageEnemy = fn; },
@@ -259,6 +269,14 @@ export const GameActions = {
   setExplodeAt: (g: Globals, fn: AreaDamageFn) => { g.explodeAt = fn; },
   megaJump: (g: Globals) => g.megaJump as FireFn | undefined,
   setMegaJump: (g: Globals, fn: FireFn) => { g.megaJump = fn; },
+  // 🦅💩 Drop a bomb from an arbitrary world position (used by the
+  // bird-poop voice action). Zero horizontal velocity — just gravity.
+  dropBombAt: (g: Globals) => g.dropBombAt as DropBombFn | undefined,
+  setDropBombAt: (g: Globals, fn: DropBombFn) => { g.dropBombAt = fn; },
+  // "kaka" / "gga gga" voice trigger — PortalSystem iterates its flying
+  // birds and calls dropBombAt at each one's position.
+  birdPoop: (g: Globals) => g.birdPoop as FireFn | undefined,
+  setBirdPoop: (g: Globals, fn: FireFn) => { g.birdPoop = fn; },
 };
 
 // Round end reasons shared with the server / portal.
