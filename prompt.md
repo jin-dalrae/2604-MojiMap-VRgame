@@ -528,3 +528,15 @@ lets have these controls in the portal only
 ```
 also make it so i can scale the emoji size on a separate area too (that includes hitbox) and when you are finished with this, upload it to the web on master and make sure it is deployed and same wiht railway and wahtever you need to do.
 ```
+
+## 2026-04-21T00:00:00Z
+
+```
+i want you to run this locally, and i want you to to make it so this app looks good on mobile view. right now the grid is hainging off to the right on mobile view. its not staying completly in view as the browser resizes.
+```
+
+## 2026-04-23T19:44:55Z
+
+```
+can you push this to my branch, using gh, then can you pull pull from the branch april22 and the go through the motions of fully deploying to server and website
+```
