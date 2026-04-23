@@ -33,15 +33,94 @@ const ADMIN_PWD = process.env.ADMIN_PWD || 'admin';
 const gridState = new Map(); // "r,c" -> { type, icon, label, role }
 const users = new Map();     // userId -> { position: {x, z, heading}, spaceId }
 
+// ── Default grid seed ───────────────────────────────────────
+// Every process boot (== every deploy) starts with a fresh randomized
+// 8×8 layout so the designer never walks into an empty grid. Exactly
+// one chair 🪑 is placed, and GRID_PLACE enforces the same rule at
+// runtime — you can't spawn a second one.
+const GRID_COLS = 8;
+const GRID_ROWS = 8;
+const ITEM_CATALOG = {
+  chair:        { icon: '🪑', label: 'Start Pt', role: 'spawn' },
+  star:         { icon: '⭐', label: 'Star',     role: 'goal' },
+  banana:       { icon: '🍌', label: 'Banana',   role: 'powerup' },
+  mushroom:     { icon: '🍄', label: 'Mushroom', role: 'mushroom' },
+  sword:        { icon: '🗡️', label: 'Sword',    role: 'weapon-sword' },
+  hammer:       { icon: '🔨', label: 'Hammer',   role: 'weapon-sword' },
+  gun:          { icon: '🔫', label: 'Squirt',   role: 'weapon-gun' },
+  poopoodoodoo: { icon: '💩', label: 'Poo',      role: 'weapon-poo' },
+  feather:      { icon: '🪶', label: 'Feather',  role: 'weapon-feather' },
+  fire:         { icon: '🔥', label: 'Fire',     role: 'obstacle-damage' },
+  robot:        { icon: '🤖', label: 'Robot',    role: 'enemy' },
+  ghost:        { icon: '👻', label: 'Ghost',    role: 'enemy' },
+  skull:        { icon: '💀', label: 'Skull',    role: 'enemy' },
+  snowman:      { icon: '⛄', label: 'Snowman',  role: 'enemy' },
+  bird:         { icon: '🦅', label: 'Eagle',    role: 'bird' },
+  cube:         { icon: '🟦', label: 'Wall',     role: 'decor' },
+  wood:         { icon: '🟫', label: 'Wood',     role: 'decor' },
+};
+// Counts sum to 64 — a completely full board.
+const DEFAULT_DISTRIBUTION = [
+  ['chair',        1],
+  ['star',        10],
+  ['banana',       3],
+  ['mushroom',     3],
+  ['sword',        1],
+  ['hammer',       1],
+  ['gun',          1],
+  ['poopoodoodoo', 1],
+  ['feather',      2],
+  ['fire',         5],
+  ['robot',        3],
+  ['ghost',        2],
+  ['skull',        2],
+  ['snowman',      2],
+  ['bird',         4],
+  ['cube',        15],
+  ['wood',         8],
+];
+
+function seedRandomGrid() {
+  gridState.clear();
+  const keys = [];
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) keys.push(`${r},${c}`);
+  }
+  // Fisher-Yates shuffle.
+  for (let i = keys.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [keys[i], keys[j]] = [keys[j], keys[i]];
+  }
+  let idx = 0;
+  for (const [type, count] of DEFAULT_DISTRIBUTION) {
+    const catalogEntry = ITEM_CATALOG[type];
+    for (let i = 0; i < count; i++) {
+      if (idx >= keys.length) break;
+      gridState.set(keys[idx++], { type, ...catalogEntry });
+    }
+  }
+  console.log(`[grid] seeded ${gridState.size} items (1 chair, random layout)`);
+}
+
+seedRandomGrid();
+
+function hasChairElsewhere(excludeKey) {
+  for (const [k, item] of gridState) {
+    if (k === excludeKey) continue;
+    if (item && item.type === 'chair') return k;
+  }
+  return null;
+}
+
 // Portal sliders — live on the server so every connecting client
 // (VR + broadcast) adopts the same scales on WELCOME. Clamped to the
 // same ranges the portal UI allows.
 //   gridScale  — playable stage footprint
 //   emojiScale — every sprite + hitbox
-let gridScale = 0.8;
+let gridScale = 1.0;  // 1m per cell — 8×8 = 8m × 8m playable area
 let emojiScale = 1.0;
 const GRID_SCALE_MIN = 0.4;
-const GRID_SCALE_MAX = 1.2;
+const GRID_SCALE_MAX = 2.0;
 const EMOJI_SCALE_MIN = 0.4;
 const EMOJI_SCALE_MAX = 2.0;
 
@@ -234,10 +313,28 @@ wss.on('connection', (ws) => {
         break;
       }
 
-      case 'GRID_PLACE':
+      case 'GRID_PLACE': {
+        // Single-chair rule — server-side guard so portal/mobile/VR
+        // can't accidentally create a second 🪑. Sender gets a
+        // PLACE_REJECTED reply so they can clear the existing chair
+        // first if they want to move it.
+        if (msg.item && msg.item.type === 'chair') {
+          const existing = hasChairElsewhere(msg.key);
+          if (existing) {
+            console.log(`[chair] rejected from ${short} — already at ${existing}`);
+            ws.send(JSON.stringify({
+              type: 'PLACE_REJECTED',
+              key: msg.key,
+              reason: 'chair-exists',
+              existingKey: existing,
+            }));
+            break;
+          }
+        }
         gridState.set(msg.key, msg.item);
         broadcast({ type: 'GRID_UPDATE', key: msg.key, item: msg.item }, ws);
         break;
+      }
 
       case 'GRID_CLEAR':
         gridState.delete(msg.key);

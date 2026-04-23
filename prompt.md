@@ -745,3 +745,75 @@ We don't need the iwsdk locomotion or teleportation. we only want them to move a
 ```
 disable all the locomotion and teleport. i told you.
 ```
+
+## 2026-04-23T06:00:00Z
+
+```
+why the game boundary is so small, and the locomotion / teleport is still working?
+```
+
+## 2026-04-23T06:05:00Z
+
+```
+update the readme, with the new game description.
+```
+
+## 2026-04-23T06:20:00Z
+
+```
+make gridscale bigger (1m for one grid, and user can avoid hitting enemy, if they move prompt. the slider cap was the reason why we couldn't move around?
+```
+
+## 2026-04-23T06:30:00Z
+
+```
+you need to change 3d vr ghost to the version of ghost that is currently in portal-mobile.
+```
+
+## 2026-04-23T06:35:00Z
+
+```
+no, we are seeing a round circle which is very small, and if we walk out of the way then we can't see anything in the game. that is big problem. even when we have set the roomscale boundary for the headset.
+```
+
+## 2026-04-23T06:40:00Z
+
+```
+no, it's not rendering sticker. the game is sticking the user only to the sit-setting, not being able to walk out of the small circe.
+```
+
+## 2026-04-23T06:41:00Z
+
+```
+*it's not about rendering...
+```
+
+## 2026-04-23T06:43:00Z
+
+```
+if you changed the small circle problem, git commit and push
+```
+
+## 2026-04-23T06:50:00Z
+
+```
+make a fancy landing page for us, having a button to the vr view
+```
+
+## 2026-04-23T07:00:00Z
+
+```
+for the items, automatically respawn them when we deploy again.
+```
+
+## 2026-04-23T07:05:00Z
+
+```
+make a full map randomly, but having only one chair at once. you can't spawn chair if their is one chair already.
+```
+
+## 2026-04-23T07:12:00Z
+
+```
+git commit and push
+```

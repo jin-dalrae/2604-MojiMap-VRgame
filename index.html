@@ -1,15 +1,402 @@
 <!doctype html>
-<html>
-
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-  <title>Prototyping - Rae, Yoyo, Ted</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MojiMap — an AR emoji arena</title>
+  <meta name="description" content="An asymmetric, multi-screen WebXR party game. Put on a Quest, walk around your room, collect stars, fight emoji enemies." />
+  <style>
+    :root {
+      --bg:        #09090b;
+      --surface:   #111113;
+      --surface-2: #18181b;
+      --border:    #27272a;
+      --border-2:  #3f3f46;
+      --accent:    #6366f1;
+      --accent-2:  #a5b4fc;
+      --text:      #fafafa;
+      --muted:     #a1a1aa;
+      --good:      #10b981;
+      --warn:      #f59e0b;
+      --bad:       #ef4444;
+      --pink:      #ec4899;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100%;
+      overflow-x: hidden;
+    }
+
+    /* ─── animated emoji confetti in the backdrop ─── */
+    .bg {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        radial-gradient(1000px 700px at 15% -10%, rgba(99,102,241,0.18) 0%, transparent 60%),
+        radial-gradient(900px  600px at 95% 10%, rgba(236,72,153,0.12) 0%, transparent 60%),
+        radial-gradient(1200px 800px at 50% 110%, rgba(16,185,129,0.12) 0%, transparent 55%),
+        var(--bg);
+    }
+    .bg .orb {
+      position: absolute;
+      width: 160px; height: 160px;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.55;
+    }
+    .bg .orb:nth-child(1) { top: 12%; left: 8%;  background: #6366f1; animation: drift 18s ease-in-out infinite; }
+    .bg .orb:nth-child(2) { top: 55%; left: 78%; background: #ec4899; animation: drift 22s ease-in-out -6s infinite; }
+    .bg .orb:nth-child(3) { top: 78%; left: 22%; background: #10b981; animation: drift 26s ease-in-out -12s infinite; }
+    @keyframes drift {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33%      { transform: translate(60px, -40px) scale(1.15); }
+      66%      { transform: translate(-40px, 40px) scale(0.9); }
+    }
+
+    .emoji-float {
+      position: absolute;
+      font-size: 36px;
+      opacity: 0.45;
+      user-select: none;
+      filter: drop-shadow(0 8px 24px rgba(0,0,0,0.6));
+      animation: bob 8s ease-in-out infinite;
+    }
+    @keyframes bob {
+      0%, 100% { transform: translateY(0) rotate(-6deg); }
+      50%      { transform: translateY(-20px) rotate(6deg); }
+    }
+
+    /* ─── layout ─── */
+    main {
+      position: relative;
+      z-index: 1;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 72px 24px 96px;
+      display: flex;
+      flex-direction: column;
+      gap: 72px;
+    }
+
+    header.hero {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    .eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      color: var(--accent-2);
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(165,180,252,0.35);
+      background: rgba(99,102,241,0.08);
+      backdrop-filter: blur(8px);
+    }
+    h1 {
+      font-size: clamp(52px, 9vw, 108px);
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      background: linear-gradient(180deg, #fafafa 0%, #a5b4fc 60%, #818cf8 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 8px 40px rgba(99,102,241,0.35));
+    }
+    .tagline {
+      font-size: clamp(16px, 2.2vw, 22px);
+      color: var(--muted);
+      max-width: 640px;
+      line-height: 1.5;
+    }
+    .tagline strong { color: var(--text); font-weight: 600; }
+
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      justify-content: center;
+      margin-top: 8px;
+    }
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 28px;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      text-decoration: none;
+      transition: transform 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+                  background 0.12s, border-color 0.12s, box-shadow 0.12s;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    .cta-primary {
+      background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
+      color: #fff;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.2) inset,
+        0 12px 32px rgba(99,102,241,0.45);
+    }
+    .cta-primary:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.2) inset,
+        0 20px 48px rgba(99,102,241,0.55);
+    }
+    .cta-primary:active { transform: translateY(0) scale(0.98); }
+    .cta-ghost {
+      background: var(--surface);
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .cta-ghost:hover { border-color: var(--accent); background: var(--surface-2); }
+    .cta-arrow { font-size: 18px; transition: transform 0.15s; }
+    .cta:hover .cta-arrow { transform: translateX(3px); }
+
+    /* ─── role cards ─── */
+    .cards-head {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 10px;
+    }
+    .cards-head h2 {
+      font-size: clamp(28px, 4vw, 36px);
+      letter-spacing: -0.02em;
+      font-weight: 800;
+    }
+    .cards-head p {
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 540px;
+      line-height: 1.5;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 18px;
+      margin-top: 28px;
+    }
+    .card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      text-decoration: none;
+      color: var(--text);
+      transition: transform 0.15s, border-color 0.15s, background 0.15s;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 3px;
+      background: var(--card-accent, var(--accent));
+      opacity: 0.8;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: var(--card-accent, var(--accent));
+      background: var(--surface-2);
+    }
+    .card .icon {
+      font-size: 32px;
+      line-height: 1;
+      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5));
+    }
+    .card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .card p {
+      color: var(--muted);
+      font-size: 13.5px;
+      line-height: 1.5;
+    }
+    .card .foot {
+      margin-top: auto;
+      color: var(--card-accent, var(--accent-2));
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ─── rules preview ─── */
+    .rules {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .rule {
+      padding: 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+    .rule-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .rule-top .glyph { font-size: 22px; }
+    .rule-top h4 { font-size: 14px; font-weight: 700; letter-spacing: 0.02em; }
+    .rule p { color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+    footer a:hover { color: var(--accent-2); }
+
+    @media (max-width: 520px) {
+      main { padding: 48px 18px 72px; gap: 52px; }
+    }
+  </style>
 </head>
 
-<body style="margin: 0; background: #000; overflow: hidden;">
-  <div id="scene-container"></div>
-  <script type="module" src="/src/index.ts"></script>
-</body>
+<body>
+  <div class="bg" aria-hidden="true">
+    <div class="orb"></div>
+    <div class="orb"></div>
+    <div class="orb"></div>
+    <div class="emoji-float" style="top:14%; left:6%;">🗡️</div>
+    <div class="emoji-float" style="top:22%; left:88%; animation-delay:-3s;">⭐</div>
+    <div class="emoji-float" style="top:62%; left:4%;  animation-delay:-5s;">🍄</div>
+    <div class="emoji-float" style="top:74%; left:92%; animation-delay:-1s;">🔥</div>
+    <div class="emoji-float" style="top:40%; left:50%; animation-delay:-4s; opacity:0.25;">👻</div>
+  </div>
 
+  <main>
+    <header class="hero">
+      <span class="eyebrow">Prototyping · CCA Spring 2026</span>
+      <h1>MojiMap</h1>
+      <p class="tagline">
+        An <strong>AR emoji arena</strong> for a Meta Quest and the people around it.
+        One player in VR. A designer drops emojis on a grid. Attackers harass from their phones.
+        A broadcast stream puts it all on the TV.
+      </p>
+
+      <div class="cta-row">
+        <a class="cta cta-primary" href="/play.html">
+          <span>Enter VR</span>
+          <span class="cta-arrow">→</span>
+        </a>
+        <a class="cta cta-ghost" href="/portal.html">
+          <span>Designer Portal</span>
+          <span class="cta-arrow">→</span>
+        </a>
+      </div>
+    </header>
+
+    <section>
+      <div class="cards-head">
+        <h2>Pick your screen</h2>
+        <p>Every role joins the same live server. Grab a headset, a laptop, or a phone.</p>
+      </div>
+
+      <div class="cards">
+        <a class="card" href="/play.html" style="--card-accent: #6366f1;">
+          <div class="icon">🥽</div>
+          <h3>VR Player</h3>
+          <p>Room-scale on a Quest. Walk with your feet, swing a sword, collect ⭐s, dodge ghosts.</p>
+          <span class="foot">Enter VR <span class="cta-arrow">→</span></span>
+        </a>
+
+        <a class="card" href="/portal.html" style="--card-accent: #a5b4fc;">
+          <div class="icon">🎨</div>
+          <h3>Designer Portal</h3>
+          <p>Drag emojis onto an 8×8 grid from a laptop. Start rounds, watch the live leaderboard.</p>
+          <span class="foot">Open portal <span class="cta-arrow">→</span></span>
+        </a>
+
+        <a class="card" href="/portal-mobile.html" style="--card-accent: #ec4899;">
+          <div class="icon">📱</div>
+          <h3>Attack (Phone)</h3>
+          <p>Tap emojis from your phone to drop hazards into the arena — target a cell or opt into random mode.</p>
+          <span class="foot">Open on phone <span class="cta-arrow">→</span></span>
+        </a>
+
+        <a class="card" href="/broadcast.html" style="--card-accent: #10b981;">
+          <div class="icon">📺</div>
+          <h3>Broadcast</h3>
+          <p>Orbit-camera view + live leaderboard for the audience. Point a TV or projector at it.</p>
+          <span class="foot">Open broadcast <span class="cta-arrow">→</span></span>
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <div class="cards-head">
+        <h2>How it plays</h2>
+        <p>Five life points. Weapons one-shot enemies. Mushrooms grow you Mario-style.</p>
+      </div>
+
+      <div class="rules" style="margin-top: 28px;">
+        <div class="rule">
+          <div class="rule-top"><span class="glyph">❤️</span><h4>Life points</h4></div>
+          <p>Start with 5 hearts. Ghosts, skulls, robots and snowmen all cost one life on touch.</p>
+        </div>
+        <div class="rule">
+          <div class="rule-top"><span class="glyph">🗡️</span><h4>Weapons</h4></div>
+          <p>Sword, hammer and water gun one-shot any enemy. Bare hands take two hits.</p>
+        </div>
+        <div class="rule">
+          <div class="rule-top"><span class="glyph">🍄</span><h4>Mushrooms</h4></div>
+          <p>Raise your max life by 2 and trail behind you. A hit pops the tail mushroom instead of your life.</p>
+        </div>
+        <div class="rule">
+          <div class="rule-top"><span class="glyph">🪶</span><h4>Feather flight</h4></div>
+          <p>Picking up a feather lifts you into the air for 3 seconds — invulnerable while flying.</p>
+        </div>
+        <div class="rule">
+          <div class="rule-top"><span class="glyph">🎙️</span><h4>Voice</h4></div>
+          <p>Say <em>"poo poo doo doo"</em> for a bomb, <em>"kaka kaka"</em> and birds drop 💩, <em>"I'm a peacock… fly"</em> takes you skyward.</p>
+        </div>
+        <div class="rule">
+          <div class="rule-top"><span class="glyph">⭐</span><h4>Winning</h4></div>
+          <p>Collect every ⭐ on the grid before the timer runs out, or outlive the round if none are placed.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Built on <a href="https://iwsdk.dev" target="_blank" rel="noopener">IWSDK</a> by
+      Rae · Yoyo · Ted &nbsp;·&nbsp; CCA Prototyping, Spring 2026
+    </footer>
+  </main>
+</body>
 </html>

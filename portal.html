@@ -671,7 +671,7 @@
       </div>
       <label class="grid-scale-label" title="Shrinks the playable stage so it fits a Quest room boundary. Emoji/pickup sprites stay the same size.">
         Stage
-        <input type="range" id="grid-scale" min="0.4" max="1.2" step="0.05" value="0.8" />
+        <input type="range" id="grid-scale" min="0.4" max="2.0" step="0.05" value="1.0" />
         <span id="grid-scale-value" class="grid-scale-value">0.80×</span>
       </label>
       <label class="grid-scale-label" title="Scales every emoji sprite AND its hitbox (pickup, sword, enemy touch, bird). Doesn't affect the stage.">
@@ -981,6 +981,20 @@
               showToast(msg.reason === 'bad-password'
                 ? 'Wrong admin password.'
                 : `Admin error: ${msg.reason}`);
+              break;
+
+            case 'PLACE_REJECTED':
+              // Server refused the placement — usually the single-chair
+              // rule. Roll back our optimistic state for that cell.
+              if (msg.key) {
+                state.delete(msg.key);
+                syncGrids();
+              }
+              if (msg.reason === 'chair-exists') {
+                showToast('Chair already placed — clear it first.');
+              } else {
+                showToast(`Placement rejected: ${msg.reason}`);
+              }
               break;
           }
         };
@@ -1392,11 +1406,15 @@
         // Always attach a role so VR can branch behavior without parsing icons.
         const withRole = item.role ? item : { ...item, role: roleFor(item.icon) };
 
-        // Single-chair rule: if the new item is a chair and one already
-        // exists somewhere else, clear the old one first.
+        // Single-chair rule: if we already have a chair somewhere else,
+        // the server will reject a new one outright. Surface that now as
+        // a toast so the designer knows to clear the existing chair first.
         if (withRole.type === 'chair') {
           const existing = findExistingChairKey();
-          if (existing && existing !== key) clearCell(existing);
+          if (existing && existing !== key) {
+            showToast('Only one chair at a time — clear the existing one first.');
+            return;
+          }
         }
 
         state.set(key, withRole);
