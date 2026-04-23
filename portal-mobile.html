@@ -160,6 +160,8 @@
         object-fit: contain;
         display: block;
       }
+      /* Bird reads a little small at grid-cell scale — bump it 5%. */
+      .sticker-bird { transform: scale(1.05); }
 
       /* Player dots live above the 8×8 data area only — inset matches
          the grid's header label strip so 0–100% maps to the data area. */
@@ -358,9 +360,14 @@
         skull:        '/textures/stickers/Skull.png',
         bird:         '/textures/Bird.png',
         chair:        '/textures/Chair.png',
+        // Restored from 2D_img — no sticker versions yet, use the
+        // original art files that still live in /textures/.
+        snowman:      '/textures/Snowman.png',
+        hammer:       '/textures/Hammer.png',
       };
       const ITEMS = [
         { type: 'sword',        icon: '🗡️', label: 'Sword',   role: 'weapon-sword'    },
+        { type: 'hammer',       icon: '🔨', label: 'Hammer',  role: 'weapon-sword'    },
         { type: 'gun',          icon: '🔫', label: 'Squirt',  role: 'weapon-gun'      },
         { type: 'poopoodoodoo', icon: '💩', label: 'Poo',     role: 'weapon-poo'      },
         { type: 'feather',      icon: '🪶', label: 'Feather', role: 'weapon-feather'  },
@@ -370,12 +377,15 @@
         { type: 'robot',        icon: '🤖', label: 'Robot',   role: 'enemy'           },
         { type: 'ghost',        icon: '👻', label: 'Ghost',   role: 'enemy'           },
         { type: 'skull',        icon: '💀', label: 'Skull',   role: 'enemy'           },
+        { type: 'snowman',      icon: '⛄', label: 'Snowman', role: 'enemy'           },
         { type: 'cube',         icon: '🟦', label: 'Wall',    role: 'decor'           },
         { type: 'wood',         icon: '🟫', label: 'Wood',    role: 'decor'           },
         { type: 'chair',        icon: '🪑', label: 'Start',   role: 'spawn'           },
       ];
+      // Sticker type is mirrored on the <img> class so CSS can nudge a
+      // specific species without walking the whole tree (bird is +5%).
       const iconHtml = (type, icon) => STICKERS[type]
-        ? `<img src="${STICKERS[type]}" alt="${icon}" />`
+        ? `<img src="${STICKERS[type]}" alt="${icon}" class="sticker sticker-${type}" />`
         : icon;
 
       // Must match src/portal.ts + portal.html — all pages share one WS server.

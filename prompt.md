@@ -678,3 +678,33 @@ let the admin with pwd can clear the grid
 ```
 let the user select with random option opt in
 ```
+
+## 2026-04-23T03:00:00Z
+
+```
+make the bird in the vr a bit bigger.
+```
+
+## 2026-04-23T03:15:00Z
+
+```
+if the user says "kaka!" or "gga gga!" then the bird poops in the game.
+```
+
+## 2026-04-23T03:30:00Z
+
+```
+there are life point. if you get the star then you'll get life point, but if you meet ghost, you can also use your bare hands to hit enemy, but it needs 2 hits to kill them, when just one hit needed when you use sword or watergun.
+```
+
+## 2026-04-23T03:35:00Z
+
+```
+make the bird size 5% bigger in the portal, portal-mobile screens.
+```
+
+## 2026-04-23T04:00:00Z
+
+```
+see 2d-img branch, there is new emoji and game effect there, we need to get it back.
+```

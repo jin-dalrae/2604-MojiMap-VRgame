@@ -46,6 +46,20 @@ function matchesPeacockPhrase(text: string): boolean {
   return /\b(im|i am)\s+a\s+peacock\b.*\bfly\b/.test(clean);
 }
 
+// Bird-poop phrase: caws like "kaka", "gaga", "caw caw", "ga ga".
+// Matches two or more consecutive ka/ga/ca syllables (with optional
+// 'w' for "caw"-style transcriptions), as a single word or separated
+// by spaces. Words like "cake", "guess", "kakapo" are rejected —
+// they'd need two complete syllables ending on a word boundary.
+function matchesBirdPoopPhrase(text: string): boolean {
+  const clean = text
+    .toLowerCase()
+    .replace(/[^a-z\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /\b([kgc]a{1,2}w?\s*){2,}\b/.test(clean);
+}
+
 function tokenUrl(): string {
   const isLocal =
     location.hostname === "localhost" || location.hostname === "127.0.0.1";
@@ -199,6 +213,13 @@ export class VoiceSystem extends createSystem({}) {
       this.interim = "";
       const jump = GameActions.megaJump(this.world.globals as Record<string, unknown>);
       jump?.();
+      return;
+    }
+    if (matchesBirdPoopPhrase(text)) {
+      console.log('[Voice] bird-poop phrase matched');
+      this.interim = "";
+      const poop = GameActions.birdPoop(this.world.globals as Record<string, unknown>);
+      poop?.();
       return;
     }
   }

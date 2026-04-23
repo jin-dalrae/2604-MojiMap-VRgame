@@ -86,6 +86,40 @@ export class BombSystem extends createSystem({}) {
       this.world.globals as Record<string, unknown>,
       () => this.spawnBomb(),
     );
+    // Drop-in spawn variant for the bird-poop voice trigger — takes an
+    // arbitrary world position and drops with zero horizontal velocity
+    // so it falls straight down onto whatever's below.
+    GameActions.setDropBombAt(
+      this.world.globals as Record<string, unknown>,
+      (x, y, z) => this.dropBombAt(x, y, z),
+    );
+  }
+
+  private dropBombAt(x: number, y: number, z: number) {
+    const now = performance.now();
+    const root = new Object3D();
+    const sprite = makePoopSprite();
+    root.add(sprite);
+    const blast = makeBlastMesh();
+    root.add(blast);
+    root.position.set(x, y, z);
+    this.scene.add(root);
+
+    // Zero initial velocity — gravity alone pulls it down. Same state
+    // machine as a thrown bomb (flying → blinking → exploding), so the
+    // blink + AoE land exactly where the bird was flying.
+    const bomb: Bomb = {
+      root,
+      sprite,
+      blast,
+      velocity: new Vector3(0, 0, 0),
+      spawnedAt: now,
+      stage: "flying",
+      stageStartedAt: now,
+      lastTickAt: 0,
+      exploded: false,
+    };
+    this.bombs.push(bomb);
   }
 
   // Called by VoiceSystem (phrase match) or PortalSystem keyboard handler.

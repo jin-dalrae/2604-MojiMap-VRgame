@@ -517,6 +517,9 @@
         border-color: var(--accent);
       }
       .item-icon { font-size: 18px; line-height: 1; }
+      /* Bird reads small at grid-cell + palette scale — bump it 5%. */
+      .item[data-type="bird"] .item-icon,
+      .cell[data-type="bird"] > span { font-size: 1.05em; }
       .item-label { font-size: 8px; color: var(--muted); white-space: nowrap; }
       .item.selected .item-label { color: #a5b4fc; }
 
@@ -714,6 +717,7 @@
     <div class="palette" id="palette-mobile">
       <span class="palette-section">Weapons</span>
       <div class="item" data-type="sword"         data-icon="🗡️" data-label="Sword">        <span class="item-icon">🗡️</span><span class="item-label">Sword</span></div>
+      <div class="item" data-type="hammer"        data-icon="🔨" data-label="Hammer">       <span class="item-icon">🔨</span><span class="item-label">Hammer</span></div>
       <div class="item" data-type="gun"           data-icon="🔫" data-label="Squirt">       <span class="item-icon">🔫</span><span class="item-label">Squirt</span></div>
       <div class="item" data-type="poopoodoodoo"  data-icon="💩" data-label="poopoodoodoo"> <span class="item-icon">💩</span><span class="item-label">poopoodoodoo</span></div>
       <div class="item" data-type="feather"       data-icon="🪶" data-label="Feather">      <span class="item-icon">🪶</span><span class="item-label">Feather</span></div>
@@ -729,6 +733,7 @@
       <div class="item" data-type="robot"    data-icon="🤖" data-label="Robot">    <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
       <div class="item" data-type="ghost"    data-icon="👻" data-label="Ghost">    <span class="item-icon">👻</span><span class="item-label">Ghost</span></div>
       <div class="item" data-type="skull"    data-icon="💀" data-label="Skull">    <span class="item-icon">💀</span><span class="item-label">Skull</span></div>
+      <div class="item" data-type="snowman"  data-icon="⛄" data-label="Snowman">  <span class="item-icon">⛄</span><span class="item-label">Snowman</span></div>
       <div class="palette-divider"></div>
       <span class="palette-section">Decor</span>
       <div class="item" data-type="cube"     data-icon="🟦" data-label="Wall">     <span class="item-icon">🟦</span><span class="item-label">Wall</span></div>
@@ -741,6 +746,7 @@
       <div class="palette" id="palette-desktop">
         <div class="palette-section">Weapons</div>
         <div class="item" data-type="sword"         data-icon="🗡️" data-label="Sword">        <span class="item-icon">🗡️</span><span class="item-label">Sword</span></div>
+        <div class="item" data-type="hammer"        data-icon="🔨" data-label="Hammer">       <span class="item-icon">🔨</span><span class="item-label">Hammer</span></div>
         <div class="item" data-type="gun"           data-icon="🔫" data-label="Squirt">       <span class="item-icon">🔫</span><span class="item-label">Squirt</span></div>
         <div class="item" data-type="poopoodoodoo"  data-icon="💩" data-label="poopoodoodoo"> <span class="item-icon">💩</span><span class="item-label">poopoodoodoo</span></div>
       <div class="item" data-type="feather"       data-icon="🪶" data-label="Feather">      <span class="item-icon">🪶</span><span class="item-label">Feather</span></div>
@@ -753,6 +759,7 @@
         <div class="item" data-type="robot"    data-icon="🤖" data-label="Robot">    <span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
         <div class="item" data-type="ghost"    data-icon="👻" data-label="Ghost">    <span class="item-icon">👻</span><span class="item-label">Ghost</span></div>
         <div class="item" data-type="skull"    data-icon="💀" data-label="Skull">    <span class="item-icon">💀</span><span class="item-label">Skull</span></div>
+        <div class="item" data-type="snowman"  data-icon="⛄" data-label="Snowman">  <span class="item-icon">⛄</span><span class="item-label">Snowman</span></div>
         <div class="palette-section">Decor</div>
         <div class="item" data-type="cube"     data-icon="🟦" data-label="Wall">     <span class="item-icon">🟦</span><span class="item-label">Wall</span></div>
         <div class="item" data-type="wood"     data-icon="🟫" data-label="Wood">     <span class="item-icon">🟫</span><span class="item-label">Wood</span></div>
@@ -790,9 +797,10 @@
         '🔫': 'weapon-gun',
         '💩': 'weapon-poo',
         '🪶': 'weapon-feather',
+        '🔨': 'weapon-sword',   // hammer equips as melee — same path as sword
         '⭐': 'goal',
         '🔥': 'obstacle-damage',
-        '🤖': 'enemy', '👻': 'enemy', '💀': 'enemy',
+        '🤖': 'enemy', '👻': 'enemy', '💀': 'enemy', '⛄': 'enemy',
         '🪑': 'spawn',
         '🦅': 'bird',
         // everything else → 'decor' (falls through)
@@ -1254,12 +1262,14 @@
             cell.classList.remove('occupied');
             cell.removeAttribute('draggable');
             delete cell.dataset.role;
+            delete cell.dataset.type;
             if (cell._dragStart) { cell.removeEventListener('dragstart', cell._dragStart); cell._dragStart = null; }
             if (cell._dragEnd)   { cell.removeEventListener('dragend',   cell._dragEnd);   cell._dragEnd = null; }
             cell.innerHTML = '';
             if (item) {
               cell.classList.add('occupied');
               if (item.role) cell.dataset.role = item.role;
+              cell.dataset.type = item.type;           // lets CSS target per-species
               const icon = document.createElement('span');
               icon.textContent = item.icon;
               icon.title = item.label;
