@@ -708,3 +708,40 @@ make the bird size 5% bigger in the portal, portal-mobile screens.
 ```
 see 2d-img branch, there is new emoji and game effect there, we need to get it back.
 ```
+
+## 2026-04-23T04:15:00Z
+
+```
+change the ghost image with [new Ghost.png image attached]
+```
+
+## 2026-04-23T04:30:00Z
+
+```
+if you go to the feather, you need to be able to fly 3 seconds, when you move while flying, you'll not get hurt.
+```
+
+## 2026-04-23T04:45:00Z
+
+```
+make ghost and chair 10% bigger in all screens
+```
+
+## 2026-04-23T04:50:00Z
+
+```
+Generated Image April 23, 2026 - 1:31PM.jpg
+original life point is 5. if you meet ghost or skull and get attack, there happens red flash light effect and you get hurt (only when you approach them) and star and Banana: recover life point by 1. if you meet Mushroom on your way, it will add you 2 extra life points(if you had 5, then it becomes 7) and they will follow the user's backside, in lane. if you met 3 mushrooms, you'll get a tail of 3 mushrooms following you.
+```
+
+## 2026-04-23T05:00:00Z
+
+```
+We don't need the iwsdk locomotion or teleportation. we only want them to move around with foot, and we can recenter by the meta button on the quest. mushroom changes the max, and if they cut the life by meeting other enemys, you'll lose mushroom. show the life to the user in their hud.
+```
+
+## 2026-04-23T05:15:00Z
+
+```
+disable all the locomotion and teleport. i told you.
+```

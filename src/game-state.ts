@@ -13,6 +13,7 @@ export type ItemRole =
   | "weapon-feather"
   | "goal"
   | "powerup"
+  | "mushroom"
   | "obstacle-damage"
   | "enemy"
   | "bird"
@@ -26,7 +27,8 @@ export function isPickup(role: ItemRole): boolean {
     role === "weapon-poo" ||
     role === "weapon-feather" ||
     role === "goal" ||
-    role === "powerup"
+    role === "powerup" ||
+    role === "mushroom"
   );
 }
 
@@ -47,12 +49,18 @@ function getOrInit<T>(globals: Globals, key: string, initial: T): Signal<T> {
   return s;
 }
 
-export const MAX_HEALTH = 100;
+// Life points are discrete (hearts, not a percentage bar). Ghost/skull
+// contact = -1 per hit. Pickups restore 1 or 2. Mushrooms can push the
+// total ABOVE MAX_HEALTH — that over-stack is what spawns followers.
+export const MAX_HEALTH = 5;
 export const GOAL_POINTS = 1;
-export const POWERUP_HEAL = 25;
-// ⭐ Star pickup — grants both goal progress and a life-point heal.
-// Cheaper than the dedicated powerup since every round is full of stars.
-export const STAR_HEAL = 15;
+export const POWERUP_HEAL = 1;   // 🍌 banana heals one life point
+export const STAR_HEAL = 1;      // ⭐ star also heals one life point
+export const MUSHROOM_HEAL = 2;  // 🍄 mushroom adds 2 lives (can exceed max)
+// Gap (in ms) between each mushroom in the follower chain. Picking up
+// two mushrooms spawns followers that sample the player's trail at
+// +400ms and +800ms ago respectively, so they stagger in a line.
+export const MUSHROOM_FOLLOWER_DELAY_MS = 400;
 export const FIRE_DPS = 30;         // health drain per second inside fire
 export const FIRE_RADIUS = 0.4;     // meters
 export const PICKUP_RADIUS = 0.5;   // meters — player head to item
@@ -199,10 +207,15 @@ export const WOOD_HIT_FLASH_MS = 260;      // shared with bird-style tint flash
 // and the left controller's trigger both dispatch a swing.
 export const SWORD_SWING_MS = 300;
 
-// 🪶 Mega jump — voice phrase "I'm a peacock … fly" routes through
-// IWSDK's locomotor.jump() with a temporarily boosted jumpHeight.
-// 8 m apex feels like a real "I'm a peacock" launch without nausea.
-export const MEGA_JUMP_HEIGHT  = 8;    // meters apex
+// 🪶 Feather → flight. Picking up a feather immediately lifts the
+// player to FLIGHT_ALTITUDE and holds them there for FLIGHT_DURATION_MS,
+// during which taking damage is disabled (invulnerable sky-walk). The
+// "I'm a peacock … fly" voice phrase triggers the same effect.
+export const FLIGHT_DURATION_MS = 3000;
+export const FLIGHT_ALTITUDE    = 3.0;  // meters above floor
+// Legacy: mega-jump constants still used by the locomotor path inside
+// megaJump() as a fallback FX if flight-altitude override is unavailable.
+export const MEGA_JUMP_HEIGHT  = 8;
 export const MEGA_JUMP_COOLDOWN_MS = 200;
 // Legacy manual-physics fields, retained for the field types but unused
 // since locomotor handles the integration internally.
@@ -299,6 +312,10 @@ export const GameState = {
   roundEndsAt:  (g: Globals) => getOrInit<number>(g, "roundEndsAt", 0),
   score:        (g: Globals) => getOrInit<number>(g, "score", 0),
   playerHealth: (g: Globals) => getOrInit<number>(g, "playerHealth", MAX_HEALTH),
+  // Live max-health. Starts at MAX_HEALTH and grows by MUSHROOM_HEAL
+  // per 🍄 pickup; shrinks back by MUSHROOM_HEAL whenever a hit pops a
+  // mushroom off the tail. Floors at MAX_HEALTH.
+  playerMaxHealth: (g: Globals) => getOrInit<number>(g, "playerMaxHealth", MAX_HEALTH),
   equippedLeft: (g: Globals) => getOrInit<"sword" | null>(g, "equippedLeft", null),
   equippedRight:(g: Globals) => getOrInit<"gun" | null>(g, "equippedRight", null),
   roundResult:  (g: Globals) => getOrInit<RoundResult | null>(g, "roundResult", null),

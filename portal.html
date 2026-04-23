@@ -517,9 +517,14 @@
         border-color: var(--accent);
       }
       .item-icon { font-size: 18px; line-height: 1; }
-      /* Bird reads small at grid-cell + palette scale — bump it 5%. */
+      /* Per-species size tweaks. Applied to both the palette button and
+         the grid cell so the sizing stays consistent in each view. */
       .item[data-type="bird"] .item-icon,
       .cell[data-type="bird"] > span { font-size: 1.05em; }
+      .item[data-type="ghost"] .item-icon,
+      .cell[data-type="ghost"] > span,
+      .item[data-type="chair"] .item-icon,
+      .cell[data-type="chair"] > span { font-size: 1.1em; }
       .item-label { font-size: 8px; color: var(--muted); white-space: nowrap; }
       .item.selected .item-label { color: #a5b4fc; }
 
@@ -554,16 +559,12 @@
       }
       .player-dot {
         position: absolute;
-        width: 11px;
-        height: 11px;
-        background: var(--pcolor, #6366f1);
-        border: 2px solid #fff;
-        border-radius: 50%;
         transform: translate(-50%, -50%);
+        font-size: 14px;            /* small 🧑 — readable over stickers */
+        line-height: 1;
         pointer-events: none;
         z-index: 2;
-        box-shadow: 0 0 0 2px var(--pcolor-soft, rgba(99,102,241,0.4)),
-                    0 0 8px var(--pcolor-glow, rgba(99,102,241,0.6));
+        filter: drop-shadow(0 0 4px var(--pcolor-glow, rgba(99,102,241,0.7)));
         transition: left 0.1s, top 0.1s;
       }
       .player-cone {
@@ -724,6 +725,8 @@
       <div class="palette-divider"></div>
       <span class="palette-section">Goals</span>
       <div class="item" data-type="star"     data-icon="⭐" data-label="Star">     <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
+      <div class="item" data-type="banana"   data-icon="🍌" data-label="Banana">   <span class="item-icon">🍌</span><span class="item-label">Banana</span></div>
+      <div class="item" data-type="mushroom" data-icon="🍄" data-label="Mushroom"> <span class="item-icon">🍄</span><span class="item-label">Mushroom</span></div>
       <div class="palette-divider"></div>
       <span class="palette-section">Wildlife</span>
       <div class="item" data-type="bird"     data-icon="🦅" data-label="Eagle">    <span class="item-icon">🦅</span><span class="item-label">Eagle</span></div>
@@ -752,6 +755,8 @@
       <div class="item" data-type="feather"       data-icon="🪶" data-label="Feather">      <span class="item-icon">🪶</span><span class="item-label">Feather</span></div>
         <div class="palette-section">Goals</div>
         <div class="item" data-type="star"     data-icon="⭐" data-label="Star">     <span class="item-icon">⭐</span><span class="item-label">Star</span></div>
+        <div class="item" data-type="banana"   data-icon="🍌" data-label="Banana">   <span class="item-icon">🍌</span><span class="item-label">Banana</span></div>
+        <div class="item" data-type="mushroom" data-icon="🍄" data-label="Mushroom"> <span class="item-icon">🍄</span><span class="item-label">Mushroom</span></div>
         <div class="palette-section">Wildlife</div>
         <div class="item" data-type="bird"     data-icon="🦅" data-label="Eagle">    <span class="item-icon">🦅</span><span class="item-label">Eagle</span></div>
         <div class="palette-section">Hazards</div>
@@ -799,6 +804,8 @@
         '🪶': 'weapon-feather',
         '🔨': 'weapon-sword',   // hammer equips as melee — same path as sword
         '⭐': 'goal',
+        '🍌': 'powerup',        // banana — +1 life
+        '🍄': 'mushroom',       // mushroom — +2 life + follower tail
         '🔥': 'obstacle-damage',
         '🤖': 'enemy', '👻': 'enemy', '💀': 'enemy', '⛄': 'enemy',
         '🪑': 'spawn',
@@ -1020,6 +1027,7 @@
           cone.className = 'player-cone';
           const dot = document.createElement('div');
           dot.className = 'player-dot';
+          dot.textContent = '🧑';   // user emoji — small, replaces the old coloured dot
           [dot, cone].forEach(el => {
             el.style.setProperty('--pcolor', color.solid);
             el.style.setProperty('--pcolor-soft', color.soft);
