@@ -702,3 +702,9 @@ there are life point. if you get the star then you'll get life point, but if you
 ```
 make the bird size 5% bigger in the portal, portal-mobile screens.
 ```
+
+## 2026-04-23T04:00:00Z
+
+```
+see 2d-img branch, there is new emoji and game effect there, we need to get it back.
+```

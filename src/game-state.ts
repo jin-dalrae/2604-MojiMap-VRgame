@@ -85,9 +85,11 @@ export const ENEMY_DEFAULT: EnemyStats = {
 export const ENEMY_STATS: Record<string, EnemyStats> = {
   // HP is uniform at 2 so the combat rule is predictable:
   //   sword or gun = 1-hit kill, bare hands = 2-hit kill.
-  robot: { hp: 2, speed: 1.5,  dps: 20, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
-  ghost: { hp: 2, speed: 0.45, dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
-  skull: { hp: 2, speed: 0.95, dps: 26, killPoints: 1, bobAmp: 0,    bobSpeed: 0   },
+  robot:   { hp: 2, speed: 1.5,  dps: 20, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
+  ghost:   { hp: 2, speed: 0.45, dps: 14, killPoints: 3, bobAmp: 0.35, bobSpeed: 3.2 },
+  skull:   { hp: 2, speed: 0.95, dps: 26, killPoints: 1, bobAmp: 0,    bobSpeed: 0   },
+  // ⛄ Lumbering iceberg — slowest on the board, light touch damage.
+  snowman: { hp: 2, speed: 0.35, dps: 12, killPoints: 2, bobAmp: 0,    bobSpeed: 0   },
 };
 
 // Per-variant AI behavior flags
@@ -97,9 +99,11 @@ export type EnemyBehavior = {
   retargetMs: number | null;    // null = never switches target
 };
 export const ENEMY_BEHAVIOR: Record<string, EnemyBehavior> = {
-  robot: { aggroRadius: 3.0,  wallPass: false, retargetMs: null  },
-  ghost: { aggroRadius: null, wallPass: true,  retargetMs: null  },
-  skull: { aggroRadius: null, wallPass: false, retargetMs: 4000  },
+  robot:   { aggroRadius: 3.0,  wallPass: false, retargetMs: null  },
+  ghost:   { aggroRadius: null, wallPass: true,  retargetMs: null  },
+  skull:   { aggroRadius: null, wallPass: false, retargetMs: 4000  },
+  // Snowman: always aggroed, can't phase walls, never switches target.
+  snowman: { aggroRadius: null, wallPass: false, retargetMs: null  },
 };
 export function enemyBehavior(type: string): EnemyBehavior {
   return ENEMY_BEHAVIOR[type] ?? { aggroRadius: null, wallPass: false, retargetMs: null };

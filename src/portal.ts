@@ -102,11 +102,13 @@ const TYPE_TO_ROLE: Record<string, ItemRole> = {
   gun:           'weapon-gun',
   poopoodoodoo:  'weapon-poo',
   feather:       'weapon-feather',
+  hammer:        'weapon-sword',  // picks up as sword — same melee equip
   star:          'goal',
   fire:          'obstacle-damage',
   robot:         'enemy',
   ghost:         'enemy',
   skull:         'enemy',
+  snowman:       'enemy',
   bird:          'bird',
   chair:         'spawn',
 };
@@ -190,6 +192,10 @@ const ITEM_TEXTURES: Record<string, string> = {
   skull:        "/textures/stickers/Skull.png",
   bird:         "/textures/Bird.png",
   chair:        "/textures/Chair.png",
+  // Restored from 2D_img — no sticker versions exist yet, so they use
+  // the original art set alongside Bird/Chair.
+  snowman:      "/textures/Snowman.png",
+  hammer:       "/textures/Hammer.png",
 };
 
 // Sticker PNGs have thicker outlines and read large on a 1.1m billboard
