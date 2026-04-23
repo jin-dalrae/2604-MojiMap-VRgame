@@ -20,6 +20,7 @@
 import {
   Mesh,
   PlaneGeometry,
+  ReferenceSpaceType,
   SessionMode,
   World,
   LineSegments,
@@ -46,8 +47,24 @@ const isSpectator = location.pathname.includes("broadcast");
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
   // Only the offer flips for spectators — sessionMode + features stay
   // identical so the IWSDK init path is the same on both pages.
+  //
+  // referenceSpace: 'bounded-floor' is essential on Meta Quest — without
+  // it, IWSDK falls back to 'local-floor' and Quest constrains the user
+  // to the seated/stationary boundary (~1m circle) even when they've
+  // configured a room-scale guardian. 'bounded-floor' gives us the full
+  // guardian area to walk around in. Falls back to 'local-floor' →
+  // 'local' → 'viewer' if the runtime doesn't support it.
   xr: {
     sessionMode: SessionMode.ImmersiveAR,
+    referenceSpace: {
+      type: ReferenceSpaceType.BoundedFloor,
+      required: false,
+      fallbackOrder: [
+        ReferenceSpaceType.LocalFloor,
+        ReferenceSpaceType.Local,
+        ReferenceSpaceType.Viewer,
+      ],
+    },
     offer: isSpectator ? "none" : "always",
     features: { handTracking: true, layers: true },
   },

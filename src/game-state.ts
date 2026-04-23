@@ -147,9 +147,15 @@ export const CHAIR_READY_RADIUS = 0.9; // meters — close enough to the chair
 // a runtime signal (portal page exposes a slider) so tuning doesn't
 // require a reload. 0.75 × 8 cells = 6m on each side, matching a
 // room-scale Quest guardian without exceeding it.
-export const GRID_SCALE_DEFAULT = 0.75;
+// 1.0m per cell × 8×8 = 8m × 8m playable area. Big enough that a player
+// with full physical walking (no locomotion) can actually dodge an
+// approaching enemy before it closes the gap.
+export const GRID_SCALE_DEFAULT = 1.0;
 export const GRID_SCALE_MIN = 0.4;
-export const GRID_SCALE_MAX = 1.2;
+// 2.0 → 8×2.0 = 16m board. Large enough to match a full-room guardian
+// without the cell-per-meter feel getting too cramped. Was 1.2 (9.6m)
+// which capped out quickly for designers wanting a bigger play area.
+export const GRID_SCALE_MAX = 2.0;
 
 // Emoji scale — grows/shrinks every sprite (pickups, enemies, eagles,
 // chair face) AND their hitboxes together. Lets the operator tune how

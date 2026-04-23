@@ -38,10 +38,10 @@ const users = new Map();     // userId -> { position: {x, z, heading}, spaceId }
 // same ranges the portal UI allows.
 //   gridScale  — playable stage footprint
 //   emojiScale — every sprite + hitbox
-let gridScale = 0.8;
+let gridScale = 1.0;  // 1m per cell — 8×8 = 8m × 8m playable area
 let emojiScale = 1.0;
 const GRID_SCALE_MIN = 0.4;
-const GRID_SCALE_MAX = 1.2;
+const GRID_SCALE_MAX = 2.0;
 const EMOJI_SCALE_MIN = 0.4;
 const EMOJI_SCALE_MAX = 2.0;
 
