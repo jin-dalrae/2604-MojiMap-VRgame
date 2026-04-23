@@ -793,3 +793,27 @@ no, it's not rendering sticker. the game is sticking the user only to the sit-se
 ```
 if you changed the small circle problem, git commit and push
 ```
+
+## 2026-04-23T06:50:00Z
+
+```
+make a fancy landing page for us, having a button to the vr view
+```
+
+## 2026-04-23T07:00:00Z
+
+```
+for the items, automatically respawn them when we deploy again.
+```
+
+## 2026-04-23T07:05:00Z
+
+```
+make a full map randomly, but having only one chair at once. you can't spawn chair if their is one chair already.
+```
+
+## 2026-04-23T07:12:00Z
+
+```
+git commit and push
+```

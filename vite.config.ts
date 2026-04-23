@@ -55,6 +55,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: "./index.html",
+        play: "./play.html",
         portal: "./portal.html",
         "portal-mobile": "./portal-mobile.html",
         broadcast: "./broadcast.html",

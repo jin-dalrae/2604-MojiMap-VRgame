@@ -430,6 +430,14 @@
             else if (msg.type === 'ADMIN_ERROR')    {
               showToast(msg.reason === 'bad-password' ? 'Wrong admin password.' : `Error: ${msg.reason}`);
             }
+            else if (msg.type === 'PLACE_REJECTED') {
+              // Server rejected the placement (e.g. second chair). Roll
+              // back the optimistic local state.
+              if (msg.key) { state.delete(msg.key); syncGrid(); }
+              showToast(msg.reason === 'chair-exists'
+                ? 'Chair already placed — clear it first.'
+                : `Placement rejected: ${msg.reason}`);
+            }
         };
       }
 
