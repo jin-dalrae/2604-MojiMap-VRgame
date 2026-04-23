@@ -594,3 +594,87 @@ let's make a new portal page, to fit in mobile web page that people can attack e
 ```
 1 a 2 refinement 3 all  existing ones
 ```
+
+## 2026-04-22T00:11:00Z
+
+```
+the portal-mobile page looks awkward currently
+```
+
+## 2026-04-23T00:00:00Z
+
+```
+what do you need to refactor in this project? analyze.
+```
+
+## 2026-04-23T00:05:00Z
+
+```
+what's the game's goal and what's the main features? define and re-evaulate your refactor plan.
+```
+
+## 2026-04-23T00:10:00Z
+
+```
+we don't need puppet.html too. ok, let's work. and now there is problem in matching vr environmental grid and portal grid, and also all the visitors just makes one user - only the / visitor can become a new user.
+```
+
+## 2026-04-23T00:30:00Z
+
+```
+[image of 10 sticker-style emoji drawings] I add more emoji drawing here. can you extract each parts?
+```
+
+## 2026-04-23T00:45:00Z
+
+```
+yes
+```
+
+## 2026-04-23T01:00:00Z
+
+```
+make the size of new icons a bit smaller in the vr space, and the person is for the user.
+```
+
+## 2026-04-23T01:15:00Z
+
+```
+robot, skull should be red, star, should be color green. now the person emoji has body together, we don't need violet pillar to put person face.
+```
+
+## 2026-04-23T01:30:00Z
+
+```
+great. in the portal-mobile view, change the emojis with the drawing. and the grid is not fixed in the screen there. put numbers into the grid, so that people can easily know the direction.
+```
+
+## 2026-04-23T02:00:00Z
+
+```
+the grid is still floating when the dimension changes in portal-mobile.
+```
+
+## 2026-04-23T02:15:00Z
+
+```
+the emoji should be smaller, the grid size should stick with the width
+```
+
+## 2026-04-23T02:25:00Z
+
+```
+emoji for attack is still too big and they don't need to be 5*3, they can be like 7*2 and far smaller than now
+```
+
+## 2026-04-23T02:35:00Z
+
+```
+let the admin with pwd can clear the grid
+```
+
+## 2026-04-23T02:50:00Z
+
+```
+let the user select with random option opt in
+```

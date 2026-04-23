@@ -23,6 +23,11 @@ import { randomUUID } from 'crypto';
 
 const PORT = process.env.PORT || 3001;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+// Admin password required for destructive actions (currently just
+// GRID_CLEAR_ALL). Defaults to "admin" for local dev; set ADMIN_PWD in
+// the deployment env to use a real secret. Without this gate, anyone
+// with the URL could wipe the board mid-round.
+const ADMIN_PWD = process.env.ADMIN_PWD || 'admin';
 
 // ── Shared state ────────────────────────────────────────────
 const gridState = new Map(); // "r,c" -> { type, icon, label, role }
@@ -187,6 +192,11 @@ wss.on('connection', (ws) => {
   const userId = randomUUID();
   ws.userId = userId;
   ws.isPresent = false;
+  // role: 'vr' | 'portal' | 'mobile' | 'broadcast' | 'unknown'.
+  // Only 'vr' connections can ever be promoted into the users map (and
+  // therefore appear as avatars/leaderboard entries). Set by a HELLO
+  // message the client sends on open.
+  ws.role = 'unknown';
 
   const short = userId.slice(0, 8);
   console.log(`[+] Client connected ${short} (${wss.clients.size} total)`);
@@ -212,6 +222,18 @@ wss.on('connection', (ws) => {
     try { msg = JSON.parse(raw); } catch { return; }
 
     switch (msg.type) {
+      case 'HELLO': {
+        // Client declares what kind of page it is. Locks so a portal/mobile
+        // page can never accidentally register as a user even if it sends
+        // PLAYER_POSITION (e.g. during testing or a client-side bug).
+        const r = msg.role;
+        if (r === 'vr' || r === 'portal' || r === 'mobile' || r === 'broadcast') {
+          ws.role = r;
+          console.log(`[role] ${short} → ${r}`);
+        }
+        break;
+      }
+
       case 'GRID_PLACE':
         gridState.set(msg.key, msg.item);
         broadcast({ type: 'GRID_UPDATE', key: msg.key, item: msg.item }, ws);
@@ -223,6 +245,14 @@ wss.on('connection', (ws) => {
         break;
 
       case 'GRID_CLEAR_ALL':
+        // Admin-only. Client sends the password entered via prompt();
+        // we only clear + broadcast if it matches.
+        if (msg.pwd !== ADMIN_PWD) {
+          console.log(`[admin] GRID_CLEAR_ALL rejected from ${short} (bad pwd)`);
+          ws.send(JSON.stringify({ type: 'ADMIN_ERROR', reason: 'bad-password' }));
+          break;
+        }
+        console.log(`[admin] GRID_CLEAR_ALL accepted from ${short}`);
         gridState.clear();
         broadcast({ type: 'GRID_CLEAR_ALL' });
         break;
@@ -300,6 +330,11 @@ wss.on('connection', (ws) => {
         break;
 
       case 'PLAYER_POSITION': {
+        // Only VR clients (the `/` page) can become user characters.
+        // Portal/mobile/broadcast sockets are silently ignored here even
+        // if they somehow send a position packet — keeps the users map
+        // clean regardless of client-side bugs.
+        if (ws.role !== 'vr') break;
         // Stats ride along with each position packet so observers can
         // render a live leaderboard without a separate message type.
         const record = {

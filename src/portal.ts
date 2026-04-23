@@ -9,7 +9,6 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
-  SphereGeometry,
   CylinderGeometry,
   ConeGeometry,
   BoxGeometry,
@@ -77,10 +76,10 @@ import {
 } from "./game-state.js";
 
 // ── Grid coordinate mapping ──────────────────────────────────
-// Portal grid: 20 cols × 10 rows, cells scaled by the live gridScale
+// Portal grid: 8 cols × 8 rows, cells scaled by the live gridScale
 // signal so the play area fits a Quest room boundary (portal slider
 // drives it). Cell centers → world:
-//   x = (col - 9.5) * scale, z = (row - 4.5) * scale.
+//   x = (col - 3.5) * scale, z = (row - 3.5) * scale.
 // y stays fixed at 0.55m so billboards hover at a human-friendly
 // height regardless of cell scale.
 function gridToWorld(
@@ -88,7 +87,7 @@ function gridToWorld(
   col: number,
   scale: number,
 ): [number, number, number] {
-  return [(col - 9.5) * scale, 0.55, (row - 4.5) * scale];
+  return [(col - 3.5) * scale, 0.55, (row - 3.5) * scale];
 }
 
 // Backfill a role for legacy items whose stored `role` is 'decor'.
@@ -169,14 +168,37 @@ function makeEmojiSprite(
 // Types listed here render as a PNG billboard (from public/textures/)
 // instead of the emoji canvas sprite. Anything not in this map falls
 // back to makeEmojiSprite.
+//
+// The `stickers/` set is a unified hand-drawn look (green outlines =
+// helpful items & most enemies, red outlines = everything else). Bird
+// keeps the older art because there's no sticker for it yet.
+// Person.png is NOT here — it's used for the player avatar face
+// (see createAvatar), not as a placeable item.
 const ITEM_TEXTURES: Record<string, string> = {
-  ghost: "/textures/Ghost.png",
-  bird:  "/textures/Bird.png",
-  gun:   "/textures/Gun.png",
-  chair: "/textures/Chair.png",
+  sword:        "/textures/stickers/Sword.png",
+  gun:          "/textures/stickers/Gun.png",
+  poopoodoodoo: "/textures/stickers/Poo.png",
+  feather:      "/textures/stickers/Feather.png",
+  star:         "/textures/stickers/Star.png",
+  fire:         "/textures/stickers/Fire.png",
+  robot:        "/textures/stickers/Robot.png",
+  ghost:        "/textures/stickers/Ghost.png",
+  skull:        "/textures/stickers/Skull.png",
+  bird:         "/textures/Bird.png",
+  chair:        "/textures/Chair.png",
 };
+
+// Sticker PNGs have thicker outlines and read large on a 1.1m billboard
+// — shrink them so they don't crowd adjacent cells. Emoji canvas sprites
+// stay at full size; walls/wood are 3D meshes and ignore this.
+const STICKER_SIZE_FACTOR = 0.702;
+// Chair is the spawn waypoint — 10% larger than regular stickers so it
+// reads as a "walk here to ready up" target.
+const CHAIR_SIZE_MULT = 1.1;
 const sharedTextureLoader = new TextureLoader();
-function makeTexturedSprite(url: string, size = 1.1): Sprite {
+// `aspect` = width / height. Default 1 keeps the old square behavior;
+// pass the real image aspect to avoid stretching tall art.
+function makeTexturedSprite(url: string, size = 1.1, aspect = 1): Sprite {
   const texture = sharedTextureLoader.load(url);
   texture.colorSpace = SRGBColorSpace;
   const material = new SpriteMaterial({
@@ -186,7 +208,7 @@ function makeTexturedSprite(url: string, size = 1.1): Sprite {
     depthWrite: true,
   });
   const sprite = new Sprite(material);
-  sprite.scale.set(size, size, 1);
+  sprite.scale.set(size * aspect, size, 1);
   return sprite;
 }
 
@@ -216,7 +238,7 @@ type AvatarRecord = {
   dead: boolean;
   // Materials referenced by setOpacity — cached so we don't walk the
   // subtree every frame.
-  materials: MeshBasicMaterial[];
+  materials: (MeshBasicMaterial | SpriteMaterial)[];
   baseOpacities: number[];
 };
 
@@ -414,14 +436,17 @@ export class PortalSystem extends createSystem({}) {
 
   // Walk every sprite and scale its baseSize by the current emoji
   // scale (the baseline is 1.1m). Walls are left alone — they're not
-  // emoji and player-relative obstacles.
+  // emoji and player-relative obstacles. Textured items shrink with
+  // STICKER_SIZE_FACTOR to match the spawn-time math.
   private resizeOnEmojiScaleChange() {
     const g = this.world.globals as Record<string, unknown>;
     const scale = currentEmojiScale(g);
     const baseline = 1.1;
     for (const item of this.spawnedEntities.values()) {
       if (item.kind !== 'sprite') continue;
-      item.baseSize = baseline * scale;
+      let mul = ITEM_TEXTURES[item.type] ? STICKER_SIZE_FACTOR : 1;
+      if (item.type === 'chair') mul *= CHAIR_SIZE_MULT;
+      item.baseSize = baseline * scale * mul;
     }
   }
 
@@ -676,7 +701,13 @@ export class PortalSystem extends createSystem({}) {
     console.log(`[GridSync] Connecting → ${url}`);
     const ws = new WebSocket(url);
 
-    ws.onopen = () => console.log('[GridSync] Connected');
+    ws.onopen = () => {
+      console.log('[GridSync] Connected');
+      // Declare role so the server never promotes a broadcast/spectator
+      // socket into the users map. VR (`/`) → 'vr'; broadcast → 'broadcast'.
+      const role = this.isSpectator() ? 'broadcast' : 'vr';
+      ws.send(JSON.stringify({ type: 'HELLO', role }));
+    };
 
     ws.onmessage = (e: MessageEvent) => {
       let msg: any;
@@ -890,33 +921,31 @@ export class PortalSystem extends createSystem({}) {
     const root = new Object3D();
     // All body materials are created transparent so dead=translucent is
     // a cheap opacity write (no remake required).
-    const materials: MeshBasicMaterial[] = [];
+    const materials: (MeshBasicMaterial | SpriteMaterial)[] = [];
     const baseOpacities: number[] = [];
-    const addMat = (m: MeshBasicMaterial) => {
+    const addMat = <T extends MeshBasicMaterial | SpriteMaterial>(m: T): T => {
       m.transparent = true;
       materials.push(m);
       baseOpacities.push(m.opacity);
       return m;
     };
 
-    const body = new Mesh(
-      new CylinderGeometry(0.15, 0.15, 0.6, 12),
-      addMat(new MeshBasicMaterial({ color })),
+    // Full-body Person sticker — the sticker already includes head + body,
+    // so the old color-coded cylinder/sphere combo is gone. Aspect ratio
+    // is preserved so the figure doesn't get squashed wide.
+    const PERSON_ASPECT = 245 / 358;                  // matches Person.png
+    const PERSON_HEIGHT = 1.65;                       // 10% taller baseline
+    const face = makeTexturedSprite(
+      "/textures/stickers/Person.png",
+      PERSON_HEIGHT,
+      PERSON_ASPECT,
     );
-    body.position.y = 0.7;
-    root.add(body);
-
-    const head = new Mesh(
-      new SphereGeometry(0.2, 16, 16),
-      addMat(new MeshBasicMaterial({ color })),
-    );
-    head.position.y = 1.2;
-    root.add(head);
-
-    const face = makeEmojiSprite('🧑', 'decor', 0.5);
-    face.position.y = 1.55;
+    addMat(face.material as SpriteMaterial);          // fades on death
+    face.position.y = PERSON_HEIGHT / 2;              // feet on the floor
     root.add(face);
 
+    // Facing cone — per-user color gives each player an identifiable
+    // trail behind their head. Still drives heading/pitch from updates.
     const cone = new Mesh(
       avatarConeGeom,
       addMat(new MeshBasicMaterial({
@@ -993,9 +1022,16 @@ export class PortalSystem extends createSystem({}) {
     // pickups still pick up after you re-deploy the palette.
     let role: ItemRole = item.role ?? 'decor';
     if (role === 'decor') role = roleFromType(type);
+    // Textured items (stickers) get a smaller footprint than emoji
+    // sprites — their outlines make them read ~25% bigger at the same
+    // baseSize, so we scale down to match the emoji visual weight.
+    // Chair (spawn point) gets an extra bump so it reads as a waypoint.
+    const texturedUrl = ITEM_TEXTURES[type];
+    let sizeMul = texturedUrl ? STICKER_SIZE_FACTOR : 1;
+    if (type === 'chair') sizeMul *= CHAIR_SIZE_MULT;
     // baseSize follows the live emoji-scale slider — sprite.scale is
     // kept in sync later via the emojiScale signal subscription too.
-    const baseSize = 1.1 * currentEmojiScale(g);
+    const baseSize = 1.1 * currentEmojiScale(g) * sizeMul;
 
     // 🟦 cubes and 🟫 wood both render as 3D wall-shaped blocks. Cubes
     // are invincible; wood breaks after WOOD_HP sword swings. They share
@@ -1040,7 +1076,6 @@ export class PortalSystem extends createSystem({}) {
     // portal started tagging roles fall back to decor (no halo). Types
     // listed in ITEM_TEXTURES render as PNG billboards instead — those
     // skip the halo since the art already conveys affordance.
-    const texturedUrl = ITEM_TEXTURES[type];
     const sprite = texturedUrl
       ? makeTexturedSprite(texturedUrl, baseSize)
       : makeEmojiSprite(item.icon, role, baseSize);

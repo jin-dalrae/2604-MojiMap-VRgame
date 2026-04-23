@@ -22,8 +22,8 @@
         --cell-alt: #18181d;
         --cell-border: #222226;
         --success: #10b981;
-        /* cell size: fit 20 cols + 19 gaps(2px) + board/area padding into viewport width */
-        --cell-size: clamp(14px, calc((100vw - 88px) / 20), 32px);
+        /* cell size: fit 8 cols + 7 gaps(3px) + board/area padding into viewport width */
+        --cell-size: clamp(28px, calc((100vw - 88px) / 8), 72px);
       }
 
       html, body {
@@ -415,8 +415,8 @@
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(20, var(--cell-size));
-        grid-template-rows: repeat(10, var(--cell-size));
+        grid-template-columns: repeat(8, var(--cell-size));
+        grid-template-rows: repeat(8, var(--cell-size));
         gap: 3px;
       }
 
@@ -699,7 +699,7 @@
 
     <!-- Mobile layout: grid area directly in body -->
     <div class="grid-area" id="grid-area-mobile">
-      <div class="grid-meta">Birds Eye · 20×10 · tap item below then tap cell</div>
+      <div class="grid-meta">Birds Eye · 8×8 · tap item below then tap cell</div>
       <div class="grid-board">
         <span class="compass compass-n">N</span>
         <span class="compass compass-s">S</span>
@@ -760,7 +760,7 @@
       </div>
 
       <div class="grid-area" id="grid-area-desktop">
-        <div class="grid-meta">Birds Eye · 20×10 · drag or tap to place</div>
+        <div class="grid-meta">Birds Eye · 8×8 · drag or tap to place</div>
         <div class="grid-board">
           <span class="compass compass-n">N</span>
           <span class="compass compass-s">S</span>
@@ -780,7 +780,7 @@
     <div id="drag-ghost"></div>
 
     <script>
-      const COLS = 20, ROWS = 10;
+      const COLS = 8, ROWS = 8;
 
       // ── Role inference ────────────────────────────────────────
       // Drives VR behavior: pickups get halos + equipment grant, hazards
@@ -828,6 +828,9 @@
         ws.onopen = () => {
           console.log('[GridSync] Connected');
           setWsStatus(true);
+          // Declare role — portal designers never register as user characters
+          // in the world, even if they somehow sent a position packet.
+          ws.send(JSON.stringify({ type: 'HELLO', role: 'portal' }));
         };
 
         ws.onclose = () => {
@@ -958,6 +961,12 @@
               renderTimer();
               showBanner(msg.reason || 'timeout');
               break;
+
+            case 'ADMIN_ERROR':
+              showToast(msg.reason === 'bad-password'
+                ? 'Wrong admin password.'
+                : `Admin error: ${msg.reason}`);
+              break;
           }
         };
       }
@@ -965,8 +974,8 @@
       connectWS();
 
       // ── Multi-user presence ─────────────────────────────────
-      // VR world: col c → x = c - 9.5, row r → z = r - 4.5
-      // Inverse:  col = x + 9.5, row = z + 4.5
+      // VR world: col c → x = c - 3.5, row r → z = r - 3.5
+      // Inverse:  col = x + 3.5, row = z + 3.5
       // Heading: atan2(fwd.x, fwd.z) in world. heading=0 → fwd=+z (screen down),
       //          heading=π/2 → +x (screen right), heading=π → -z (screen up).
       //          CSS rotation (cw from default down-pointing cone) = heading rad → deg.
@@ -1187,8 +1196,8 @@
           const gapX = r01.left - r00.right;
           const gapY = r10.top  - r00.bottom;
 
-          const col = pos.x + 9.5;
-          const row = pos.z + 4.5;
+          const col = pos.x + 3.5;
+          const row = pos.z + 3.5;
 
           const px = (r00.left - boardRect.left) + col * (cellW + gapX) + cellW / 2;
           const py = (r00.top  - boardRect.top)  + row * (cellH + gapY) + cellH / 2;
@@ -1390,12 +1399,14 @@
       }
 
       // ── Clear all ────────────────────────────────────────────
+      // Admin-gated — server verifies the password before actually
+      // clearing. We still optimistically clear the local view so the
+      // tap feels responsive; if the server rejects (ADMIN_ERROR), the
+      // next GRID_UPDATE/WELCOME will re-hydrate the state.
       document.getElementById('clear-btn').addEventListener('click', () => {
-        state.clear();
-        selectedItem = null;
-        document.querySelectorAll('.item').forEach(i => i.classList.remove('selected'));
-        syncGrids();
-        wsSend({ type: 'GRID_CLEAR_ALL' });
+        const pwd = prompt('Admin password to clear the grid:');
+        if (pwd === null || pwd === '') return;
+        wsSend({ type: 'GRID_CLEAR_ALL', pwd });
       });
 
       // ── Round timer ──────────────────────────────────────────

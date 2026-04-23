@@ -58,7 +58,6 @@ export default defineConfig({
         portal: "./portal.html",
         "portal-mobile": "./portal-mobile.html",
         broadcast: "./broadcast.html",
-        puppet: "./puppet.html",
       },
     },
   },

@@ -71,24 +71,38 @@
       }
       .btn-primary         { background: var(--accent); color: #fff; }
       .btn-primary.running { background: #ef4444; }
+      .btn-ghost {
+        background: transparent;
+        color: var(--muted);
+        border: 1px solid var(--border);
+      }
+      .btn-ghost:active { border-color: var(--accent); color: var(--text); }
+      .header-actions { display: flex; gap: 6px; }
 
       /* ── Mini grid viz (auto-fits viewport, never scrolls) ── */
-      /* The grid is 8×8 and lives in the middle band. It locks to the
-         smaller of (available height) and (available width), always square. */
+      /* The grid is sized in JS via a ResizeObserver on `.grid-wrap` —
+         always the largest square that fits the content box, no matter
+         what the palette/header do. Container-query units were unreliable
+         here under iOS Safari + Quest Browser when the keyboard opened
+         or the page rotated. */
       .grid-wrap {
         flex: 1 1 auto;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 10px;
-        min-height: 0; /* let flex shrink below its content size */
+        padding: 8px;
+        min-height: 0;
+        overflow: hidden;
       }
+      /* Chess-board layout: first row = column labels, first column =
+         row labels, rest = 8×8 data cells. Labels take a fixed ~7% of
+         the square; data cells share the rest as 1fr each. */
       .grid {
-        width: min(calc(100dvh - 220px), calc(100vw - 24px));
-        aspect-ratio: 1;
+        /* width/height set by fitGrid() in JS. */
+        --label: clamp(14px, 7%, 22px);
         display: grid;
-        grid-template-columns: repeat(8, 1fr);
-        grid-template-rows:    repeat(8, 1fr);
+        grid-template-columns: var(--label) repeat(8, 1fr);
+        grid-template-rows:    var(--label) repeat(8, 1fr);
         gap: 0;
         background: var(--cell-border);
         border: 1px solid var(--cell-border);
@@ -96,29 +110,67 @@
         overflow: hidden;
         position: relative;
       }
-      .cell {
-        background: var(--cell-bg);
+      /* Header strip cells (corner + col labels + row labels). */
+      .gh-corner { background: var(--bg); }
+      .gh-col, .gh-row {
+        background: var(--bg);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: clamp(16px, 5vmin, 34px);
+        font: 700 clamp(9px, 2.2vmin, 12px)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+      }
+      .cell {
+        background: var(--cell-bg);
         position: relative;
         -webkit-tap-highlight-color: transparent;
+        overflow: hidden;
+        /* 16% padding shrinks every sticker to ~68% of its cell so the
+           art has plenty of breathing room around it — smaller than the
+           old crammed look. Scales with cell size automatically. */
+        padding: 16%;
       }
       .cell.alt { background: var(--cell-alt); }
       .cell.occupied {
         background: var(--surface2);
         box-shadow: inset 0 0 8px rgba(99,102,241,0.25);
       }
-      .cell.flash {
-        animation: flash 0.4s ease-out;
-      }
+      .cell.flash { animation: flash 0.4s ease-out; }
       @keyframes flash {
         0%   { background: rgba(239,68,68,0.7); transform: scale(1.15); }
         100% { background: var(--surface2);     transform: scale(1);    }
       }
+      /* The sticker/emoji layer fills the cell's padding box so every
+         item — tall, square, or wide — gets a uniform bounding area and
+         object-fit handles the rest. */
+      .cell-icon {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: clamp(14px, 4.5vmin, 30px);
+        line-height: 1;
+        pointer-events: none;
+      }
+      .cell-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
 
-      .players-layer { position: absolute; inset: 0; pointer-events: none; }
+      /* Player dots live above the 8×8 data area only — inset matches
+         the grid's header label strip so 0–100% maps to the data area. */
+      .players-layer {
+        position: absolute;
+        top: var(--label, 22px);
+        left: var(--label, 22px);
+        right: 0;
+        bottom: 0;
+        pointer-events: none;
+      }
       .player-dot {
         position: absolute;
         width: 10px; height: 10px;
@@ -130,28 +182,29 @@
         transition: left 0.1s, top 0.1s;
       }
 
-      /* ── Attack palette (bottom) — every item tappable, no horizontal scroll ── */
+      /* ── Attack palette (bottom) — 7 × 2 grid; 13 items + 1 empty ── */
       .palette {
         background: var(--surface);
         border-top: 1px solid var(--border);
-        padding: 8px 8px 10px;
+        padding: 6px 6px 8px;
         flex-shrink: 0;
         display: grid;
-        /* Fixed 5 columns so up to 15 items fit in a 3-row strip, no scroll */
-        grid-template-columns: repeat(5, 1fr);
-        gap: 6px;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+        max-width: 420px;
+        width: 100%;
+        margin-inline: auto;
       }
       .item {
-        aspect-ratio: 1;
-        min-height: 48px;
+        /* Compact tap target — icon-only (label hidden in this dense
+           7-col layout); the button is just big enough for a finger. */
+        height: 44px;
         background: var(--surface2);
         border: 1px solid var(--border);
-        border-radius: 10px;
+        border-radius: 8px;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 2px;
         cursor: pointer;
         -webkit-tap-highlight-color: transparent;
         transition: transform 0.08s, border-color 0.08s, background 0.08s;
@@ -161,9 +214,57 @@
         border-color: var(--accent);
         background: var(--accent-dim);
       }
+      .item.selected {
+        border-color: var(--accent);
+        background: var(--accent-dim);
+        box-shadow: 0 0 0 1px var(--accent) inset;
+      }
       .item.cooldown { opacity: 0.4; pointer-events: none; }
-      .item-icon  { font-size: clamp(18px, 4.5vmin, 28px); line-height: 1; }
-      .item-label { font-size: 9px; color: var(--muted); }
+      /* Random-mode toggle (header) — green pill when active. */
+      .btn-ghost.active {
+        background: rgba(16,185,129,0.18);
+        border-color: var(--success);
+        color: var(--text);
+      }
+      /* "×" remove badge on occupied cells — hidden until the cell is
+         tapped, then click the badge itself to clear that one cell. */
+      .remove-x {
+        position: absolute;
+        top: 1px;
+        right: 2px;
+        width: 16px;
+        height: 16px;
+        background: rgba(239, 68, 68, 0.9);
+        color: #fff;
+        border-radius: 50%;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font: 700 12px/1 system-ui, sans-serif;
+        pointer-events: auto;
+        z-index: 2;
+        cursor: pointer;
+      }
+      .cell.has-remove .remove-x { display: flex; }
+      /* Palette icon — FIXED pixel size so attack buttons don't grow on
+         wider viewports. 7×2 layout is icon-only; label is hidden to
+         keep the strip compact. */
+      .item-icon {
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        line-height: 1;
+      }
+      .item-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      .item-label { display: none; }
 
       /* ── Toast ── */
       .toast {
@@ -211,7 +312,11 @@
     <header>
       <h1>MojiMap · Attack</h1>
       <div class="timer-display" id="timer-display">— : —</div>
-      <button class="btn btn-primary" id="start-round-btn">Start</button>
+      <div class="header-actions">
+        <button class="btn btn-ghost" id="random-btn" title="Random drop — when ON, tapping a palette emoji places it in a random empty cell">🎲</button>
+        <button class="btn btn-ghost" id="clear-btn">Clear</button>
+        <button class="btn btn-primary" id="start-round-btn">Start</button>
+      </div>
     </header>
 
     <div class="grid-wrap">
@@ -220,21 +325,7 @@
       </div>
     </div>
 
-    <div class="palette" id="palette">
-      <div class="item" data-type="sword"        data-icon="🗡️" data-label="Sword"><span class="item-icon">🗡️</span><span class="item-label">Sword</span></div>
-      <div class="item" data-type="gun"          data-icon="🔫" data-label="Squirt"><span class="item-icon">🔫</span><span class="item-label">Squirt</span></div>
-      <div class="item" data-type="poopoodoodoo" data-icon="💩" data-label="Poo"><span class="item-icon">💩</span><span class="item-label">Poo</span></div>
-      <div class="item" data-type="feather"      data-icon="🪶" data-label="Feather"><span class="item-icon">🪶</span><span class="item-label">Feather</span></div>
-      <div class="item" data-type="star"         data-icon="⭐" data-label="Star"><span class="item-icon">⭐</span><span class="item-label">Star</span></div>
-      <div class="item" data-type="bird"         data-icon="🦅" data-label="Bird"><span class="item-icon">🦅</span><span class="item-label">Bird</span></div>
-      <div class="item" data-type="fire"         data-icon="🔥" data-label="Fire"><span class="item-icon">🔥</span><span class="item-label">Fire</span></div>
-      <div class="item" data-type="robot"        data-icon="🤖" data-label="Robot"><span class="item-icon">🤖</span><span class="item-label">Robot</span></div>
-      <div class="item" data-type="ghost"        data-icon="👻" data-label="Ghost"><span class="item-icon">👻</span><span class="item-label">Ghost</span></div>
-      <div class="item" data-type="skull"        data-icon="💀" data-label="Skull"><span class="item-icon">💀</span><span class="item-label">Skull</span></div>
-      <div class="item" data-type="cube"         data-icon="🟦" data-label="Wall"><span class="item-icon">🟦</span><span class="item-label">Wall</span></div>
-      <div class="item" data-type="wood"         data-icon="🟫" data-label="Wood"><span class="item-icon">🟫</span><span class="item-label">Wood</span></div>
-      <div class="item" data-type="chair"        data-icon="🪑" data-label="Start"><span class="item-icon">🪑</span><span class="item-label">Start</span></div>
-    </div>
+    <div class="palette" id="palette"></div>
 
     <div id="toast" class="toast"></div>
 
@@ -251,17 +342,47 @@
       const COLS = 8, ROWS = 8;
       const HALF_C = COLS / 2, HALF_R = ROWS / 2;
 
-      const ROLE_BY_ICON = {
-        '🗡️': 'weapon-sword', '🔫': 'weapon-gun', '💩': 'weapon-poo', '🪶': 'weapon-feather',
-        '⭐': 'goal', '🦅': 'bird',
-        '🔥': 'obstacle-damage', '🤖': 'enemy', '👻': 'enemy', '💀': 'enemy',
-        '🪑': 'spawn',
+      // Must match src/portal.ts: ITEM_TEXTURES + ROLE_BY_ICON + TYPE_TO_ROLE.
+      // When a type has a sticker here, both the palette button and the
+      // grid cell render it as an <img>; types not listed fall back to
+      // the emoji glyph (currently cube/wood only).
+      const STICKERS = {
+        sword:        '/textures/stickers/Sword.png',
+        gun:          '/textures/stickers/Gun.png',
+        poopoodoodoo: '/textures/stickers/Poo.png',
+        feather:      '/textures/stickers/Feather.png',
+        star:         '/textures/stickers/Star.png',
+        fire:         '/textures/stickers/Fire.png',
+        robot:        '/textures/stickers/Robot.png',
+        ghost:        '/textures/stickers/Ghost.png',
+        skull:        '/textures/stickers/Skull.png',
+        bird:         '/textures/Bird.png',
+        chair:        '/textures/Chair.png',
       };
-      function roleFor(icon) { return ROLE_BY_ICON[icon] || 'decor'; }
+      const ITEMS = [
+        { type: 'sword',        icon: '🗡️', label: 'Sword',   role: 'weapon-sword'    },
+        { type: 'gun',          icon: '🔫', label: 'Squirt',  role: 'weapon-gun'      },
+        { type: 'poopoodoodoo', icon: '💩', label: 'Poo',     role: 'weapon-poo'      },
+        { type: 'feather',      icon: '🪶', label: 'Feather', role: 'weapon-feather'  },
+        { type: 'star',         icon: '⭐', label: 'Star',    role: 'goal'            },
+        { type: 'bird',         icon: '🦅', label: 'Bird',    role: 'bird'            },
+        { type: 'fire',         icon: '🔥', label: 'Fire',    role: 'obstacle-damage' },
+        { type: 'robot',        icon: '🤖', label: 'Robot',   role: 'enemy'           },
+        { type: 'ghost',        icon: '👻', label: 'Ghost',   role: 'enemy'           },
+        { type: 'skull',        icon: '💀', label: 'Skull',   role: 'enemy'           },
+        { type: 'cube',         icon: '🟦', label: 'Wall',    role: 'decor'           },
+        { type: 'wood',         icon: '🟫', label: 'Wood',    role: 'decor'           },
+        { type: 'chair',        icon: '🪑', label: 'Start',   role: 'spawn'           },
+      ];
+      const iconHtml = (type, icon) => STICKERS[type]
+        ? `<img src="${STICKERS[type]}" alt="${icon}" />`
+        : icon;
 
-      const WS_URL = location.hostname === 'localhost'
-        ? 'ws://localhost:3001'
-        : 'wss://questproto-725835663363.us-west1.run.app';
+      // Must match src/portal.ts + portal.html — all pages share one WS server.
+      const _isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      const WS_URL = _isLocal
+        ? `ws://${location.hostname}:3001`
+        : 'wss://ar-app-ws-production.up.railway.app';
 
       let ws = null, wsReady = false, myUserId = null;
       const state   = new Map();   // "r,c" -> item
@@ -272,7 +393,12 @@
 
       function connectWS() {
         ws = new WebSocket(WS_URL);
-        ws.onopen    = () => { wsReady = true; };
+        ws.onopen    = () => {
+          wsReady = true;
+          // Declare role — mobile attackers never register as user characters
+          // in the world. Server enforces this even if we accidentally send one.
+          ws.send(JSON.stringify({ type: 'HELLO', role: 'mobile' }));
+        };
         ws.onclose   = () => { wsReady = false; setTimeout(connectWS, 2000); };
         ws.onmessage = (e) => {
           const msg = JSON.parse(e.data);
@@ -287,18 +413,92 @@
             else if (msg.type === 'PLAYER_POSITION'){ updatePlayer(msg.userId, msg.position); }
             else if (msg.type === 'ROUND_START')    { roundEndsAt = msg.endsAt; startTick(); }
             else if (msg.type === 'ROUND_END')      { roundEndsAt = 0; showBanner(msg.reason); }
+            else if (msg.type === 'ADMIN_ERROR')    {
+              showToast(msg.reason === 'bad-password' ? 'Wrong admin password.' : `Error: ${msg.reason}`);
+            }
         };
       }
 
-      // Build the 8×8 cell grid once.
+      // ── Toast helper (reuses the static #toast element) ─────
+      const toastEl = document.getElementById('toast');
+      let toastHideAt = 0;
+      function showToast(text) {
+        toastEl.textContent = text;
+        toastEl.classList.add('show');
+        toastHideAt = Date.now() + 2500;
+        setTimeout(() => {
+          if (Date.now() >= toastHideAt) toastEl.classList.remove('show');
+        }, 2600);
+      }
+
+      // Build the grid once — chess-board layout:
+      //   row 0, col 0..7        →  column header labels (0..7)
+      //   row 0..7, col 0        →  row header labels    (0..7)
+      //   row 1..8, col 1..8     →  the 8×8 data cells   (keyed "r,c")
+      // Players layer is inserted last so its absolute positioning
+      // stacks above the cells; its inset is offset to match the data area.
       const gridEl = document.getElementById('grid');
+      const gridWrapEl = gridEl.parentElement;
+      // Grid is always the largest square that fully fits the wrap —
+      // capped by BOTH width and height so the whole board is visible
+      // on any viewport aspect ratio.
+      function fitGrid(rect) {
+        const size = Math.max(0, Math.min(rect.width, rect.height));
+        gridEl.style.width  = size + 'px';
+        gridEl.style.height = size + 'px';
+      }
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver((entries) => fitGrid(entries[0].contentRect)).observe(gridWrapEl);
+      } else {
+        // Fallback for older browsers — window resize only.
+        const refit = () => {
+          const cs = getComputedStyle(gridWrapEl);
+          fitGrid({
+            width:  gridWrapEl.clientWidth  - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight),
+            height: gridWrapEl.clientHeight - parseFloat(cs.paddingTop)  - parseFloat(cs.paddingBottom),
+          });
+        };
+        window.addEventListener('resize', refit);
+        refit();
+      }
+
       const cellByKey = new Map();
+      const playersEl = document.getElementById('players');
+      // Row 0: empty corner + column labels (0..7).
+      const corner = document.createElement('div');
+      corner.className = 'gh-corner';
+      gridEl.insertBefore(corner, playersEl);
+      for (let c = 0; c < COLS; c++) {
+        const lbl = document.createElement('div');
+        lbl.className = 'gh-col';
+        lbl.textContent = c;
+        gridEl.insertBefore(lbl, playersEl);
+      }
+      // Rows 1..8: row label (0..7) then 8 data cells.
       for (let r = 0; r < ROWS; r++) {
+        const rowLbl = document.createElement('div');
+        rowLbl.className = 'gh-row';
+        rowLbl.textContent = r;
+        gridEl.insertBefore(rowLbl, playersEl);
         for (let c = 0; c < COLS; c++) {
           const cell = document.createElement('div');
           cell.className = 'cell' + ((r + c) % 2 ? ' alt' : '');
           cell.dataset.r = r; cell.dataset.c = c;
-          gridEl.insertBefore(cell, document.getElementById('players'));
+          cell.innerHTML =
+            `<span class="cell-icon"></span>` +
+            `<span class="remove-x" aria-label="Remove">×</span>`;
+          cell.addEventListener('click', onCellClick);
+          // × bubble consumes the tap so it doesn't also place a new item.
+          cell.querySelector('.remove-x').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const key = `${cell.dataset.r},${cell.dataset.c}`;
+            if (!state.has(key)) return;
+            state.delete(key);
+            cell.classList.remove('has-remove');
+            syncGrid();
+            wsSend({ type: 'GRID_CLEAR', key });
+          });
+          gridEl.insertBefore(cell, playersEl);
           cellByKey.set(`${r},${c}`, cell);
         }
       }
@@ -306,13 +506,65 @@
       function syncGrid() {
         for (const [key, cell] of cellByKey.entries()) {
           const item = state.get(key);
-          cell.textContent = item ? item.icon : '';
+          const iconEl = cell.querySelector('.cell-icon');
+          iconEl.innerHTML = item ? iconHtml(item.type, item.icon) : '';
           cell.classList.toggle('occupied', !!item);
+          // Drop any stale remove badge when the cell empties.
+          if (!item) cell.classList.remove('has-remove');
         }
       }
 
-      // Tap an emoji in the palette → pick a random empty cell, send it.
-      // If the board is full we overwrite any random cell so taps still land.
+      // Build the palette: one tappable button per entry in ITEMS, with
+      // a sticker <img> when available, emoji otherwise.
+      const paletteEl = document.getElementById('palette');
+      for (const it of ITEMS) {
+        const el = document.createElement('div');
+        el.className = 'item';
+        el.dataset.type  = it.type;
+        el.dataset.icon  = it.icon;
+        el.dataset.label = it.label;
+        el.dataset.role  = it.role;
+        el.innerHTML =
+          `<span class="item-icon">${iconHtml(it.type, it.icon)}</span>` +
+          `<span class="item-label">${it.label}</span>`;
+        paletteEl.appendChild(el);
+      }
+
+      // ── Two placement modes ─────────────────────────────────
+      // Default (select mode): tap palette to select, tap grid cell to
+      //   place at that cell. Tap occupied cell → × badge toggles, tap
+      //   the × to clear it. Surgical, low-chaos.
+      // Random mode (opt-in via 🎲 toggle): tap palette and the item
+      //   lands in a random empty cell immediately. One-handed chaos.
+      let selectedItem = null;
+      let randomMode  = false;
+
+      function itemFromEl(el) {
+        return {
+          type:  el.dataset.type,
+          icon:  el.dataset.icon,
+          label: el.dataset.label,
+          role:  el.dataset.role,
+        };
+      }
+
+      function clearSelection() {
+        selectedItem = null;
+        document.querySelectorAll('.item.selected').forEach(i => i.classList.remove('selected'));
+      }
+
+      function placeAt(key, item) {
+        state.set(key, item);
+        syncGrid();
+        wsSend({ type: 'GRID_PLACE', key, item });
+        const cell = cellByKey.get(key);
+        if (cell) {
+          cell.classList.remove('flash');
+          void cell.offsetWidth;   // restart the animation on rapid taps
+          cell.classList.add('flash');
+        }
+      }
+
       function pickRandomCellKey() {
         const empty = [];
         for (let r = 0; r < ROWS; r++) {
@@ -322,37 +574,54 @@
           }
         }
         if (empty.length) return empty[Math.floor(Math.random() * empty.length)];
-        // Fallback: any cell (tap never feels dead).
         const r = Math.floor(Math.random() * ROWS);
         const c = Math.floor(Math.random() * COLS);
         return `${r},${c}`;
       }
 
-      function attack(el) {
-        const item = {
-          type:  el.dataset.type,
-          icon:  el.dataset.icon,
-          label: el.dataset.label,
-          role:  roleFor(el.dataset.icon),
-        };
-        const key = pickRandomCellKey();
-        state.set(key, item);
-        syncGrid();
-        wsSend({ type: 'GRID_PLACE', key, item });
-
-        // Visual feedback on the targeted cell.
-        const cell = cellByKey.get(key);
-        if (cell) {
-          cell.classList.remove('flash');
-          // force reflow so the animation restarts if rapidly tapped
-          void cell.offsetWidth;
-          cell.classList.add('flash');
+      function onCellClick(e) {
+        const cell = e.currentTarget;
+        const key = `${cell.dataset.r},${cell.dataset.c}`;
+        if (state.has(key)) {
+          // Occupied cells show/hide the × badge on tap.
+          cell.classList.toggle('has-remove');
+          return;
         }
+        if (randomMode) return;                  // random mode ignores cell aim
+        if (!selectedItem) {
+          showToast('Pick an emoji first');
+          return;
+        }
+        placeAt(key, selectedItem);
       }
 
+      // Palette tap — behavior depends on the mode toggle.
       document.querySelectorAll('.item').forEach(el => {
-        el.addEventListener('click', () => attack(el));
+        el.addEventListener('click', () => {
+          if (randomMode) {
+            placeAt(pickRandomCellKey(), itemFromEl(el));
+            return;
+          }
+          const wasSelected = selectedItem?.type === el.dataset.type;
+          clearSelection();
+          if (!wasSelected) {
+            selectedItem = itemFromEl(el);
+            el.classList.add('selected');
+          }
+        });
       });
+
+      // 🎲 Random-mode toggle — selecting turns off any pending item so
+      // the two modes can't hold inconsistent state.
+      const randomBtn = document.getElementById('random-btn');
+      randomBtn.onclick = () => {
+        randomMode = !randomMode;
+        randomBtn.classList.toggle('active', randomMode);
+        randomBtn.title = randomMode
+          ? 'Random mode ON — tap any emoji to drop in a random cell'
+          : 'Random drop — when ON, tapping a palette emoji places it in a random empty cell';
+        clearSelection();
+      };
 
       // Dot overlay: convert world (x,z) back to grid cell indices and plot.
       // VR board is 8×8 with gridScale cells; col c → x = (c + 0.5 − HALF_C) * cell.
@@ -411,6 +680,14 @@
       document.getElementById('start-round-btn').onclick = () => {
         if (roundEndsAt) wsSend({ type: 'ROUND_END',     reason: 'host-stopped' });
         else             wsSend({ type: 'ROUND_REQUEST', duration: 30 });
+      };
+
+      // Admin-gated clear. Server verifies ADMIN_PWD env var ("admin"
+      // locally unless overridden); if wrong it replies ADMIN_ERROR.
+      document.getElementById('clear-btn').onclick = () => {
+        const pwd = prompt('Admin password to clear the grid:');
+        if (pwd === null || pwd === '') return;
+        wsSend({ type: 'GRID_CLEAR_ALL', pwd });
       };
 
       connectWS();
