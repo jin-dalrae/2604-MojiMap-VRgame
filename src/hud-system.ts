@@ -336,7 +336,8 @@ export class HUDSystem extends createSystem({}) {
     const running = GameState.roundRunning(g).peek();
     const endsAt  = GameState.roundEndsAt(g).peek();
     const score   = GameState.score(g).peek();
-    const health  = GameState.playerHealth(g).peek();
+    const health     = GameState.playerHealth(g).peek();
+    const maxHealth  = GameState.playerMaxHealth(g).peek();
     const goalsTotal     = GameState.goalsTotal(g).peek();
     const goalsCollected = GameState.goalsCollected(g).peek();
 
@@ -375,20 +376,25 @@ export class HUDSystem extends createSystem({}) {
     const scoreText = goalsTotal > 0 ? `${goalsCollected}/${goalsTotal}` : String(score);
     ctx.fillText(scoreText, 260, 66);
 
-    // Health bar
-    const barX = 340, barY = 48, barW = 148, barH = 28;
-    const pct = Math.max(0, Math.min(1, health / MAX_HEALTH));
-    ctx.fillStyle = "rgba(255,255,255,0.1)";
-    roundedRect(ctx, barX, barY, barW, barH, 6);
-    ctx.fill();
-    const healthColor = pct > 0.5 ? "#10b981" : pct > 0.25 ? "#f59e0b" : "#ef4444";
-    ctx.fillStyle = healthColor;
-    roundedRect(ctx, barX, barY, barW * pct, barH, 6);
-    ctx.fill();
-    ctx.fillStyle = "#f4f4f5";
-    ctx.font = 'bold 20px ui-monospace, SFMono-Regular, Menlo, monospace';
-    ctx.textAlign = "center";
-    ctx.fillText(`${Math.ceil(health)}`, barX + barW / 2, barY + barH / 2 + 1);
+    // Discrete life hearts — one per life point. Filled ❤ up to
+    // current health, empty 🤍 to the live max (which bumps up with
+    // each 🍄 pickup). Drawn right-aligned so the row flexes with
+    // mushroom pickups without reflowing the timer/score block.
+    const livesRightEdge = CANVAS_W - 20;
+    const heartStep = 30;                   // px between heart glyphs
+    const heartY = 66;
+    const lives = Math.max(0, Math.ceil(health));
+    const cap   = Math.max(MAX_HEALTH, Math.ceil(maxHealth));
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.font = 'bold 26px "Apple Color Emoji", system-ui, sans-serif';
+    for (let i = 0; i < cap; i++) {
+      // i=0 is the rightmost heart; we walk leftward so the line stays
+      // anchored to livesRightEdge.
+      const x = livesRightEdge - i * heartStep;
+      ctx.fillStyle = i < lives ? "#ef4444" : "rgba(200,200,200,0.35)";
+      ctx.fillText(i < lives ? "❤" : "♡", x, heartY);
+    }
 
     this.texture.needsUpdate = true;
   }

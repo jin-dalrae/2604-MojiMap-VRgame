@@ -14,9 +14,6 @@ import {
   BoxGeometry,
   DoubleSide,
   Object3D,
-  LocomotionEnvironment,
-  EnvironmentType,
-  LocomotionSystem,
   AdditiveBlending,
   setWorldPosition,
 } from "@iwsdk/core";
@@ -35,10 +32,11 @@ import {
   GOAL_POINTS,
   POWERUP_HEAL,
   STAR_HEAL,
+  MUSHROOM_HEAL,
+  MUSHROOM_FOLLOWER_DELAY_MS,
   BARE_HANDS_DAMAGE,
   BARE_HANDS_RADIUS,
   BARE_HANDS_MIN_SPEED,
-  FIRE_DPS,
   FIRE_RADIUS,
   PICKUP_RADIUS,
   ENEMY_DAMAGE_RADIUS,
@@ -73,8 +71,9 @@ import {
   WOOD_HP,
   WOOD_COLOR,
   WOOD_HIT_FLASH_MS,
-  MEGA_JUMP_HEIGHT,
   MEGA_JUMP_COOLDOWN_MS,
+  FLIGHT_DURATION_MS,
+  FLIGHT_ALTITUDE,
   enemyBehavior,
   type ItemRole,
 } from "./game-state.js";
@@ -104,6 +103,8 @@ const TYPE_TO_ROLE: Record<string, ItemRole> = {
   feather:       'weapon-feather',
   hammer:        'weapon-sword',  // picks up as sword — same melee equip
   star:          'goal',
+  banana:        'powerup',       // 🍌 = +1 life
+  mushroom:      'mushroom',      // 🍄 = +2 life + spawn follower
   fire:          'obstacle-damage',
   robot:         'enemy',
   ghost:         'enemy',
@@ -205,6 +206,8 @@ const STICKER_SIZE_FACTOR = 0.702;
 // Chair is the spawn waypoint — 10% larger than regular stickers so it
 // reads as a "walk here to ready up" target.
 const CHAIR_SIZE_MULT = 1.1;
+// Ghost art reads small at baseline — same +10% bump as chair.
+const GHOST_SIZE_MULT = 1.1;
 // Birds fly at BIRD_FLIGHT_HEIGHT (5.7m) — they look tiny from ground
 // level unless bumped up.
 const BIRD_SIZE_MULT = 1.3;
@@ -260,7 +263,7 @@ type AvatarRecord = {
 // so players can treat them as spatial obstacles. Tall enough to block
 // over-the-top shots but short enough to peek above if standing.
 const WALL_WIDTH  = 0.95;   // m — leaves a narrow gap between grid cells
-const WALL_HEIGHT = 2.2;
+const WALL_HEIGHT = 1.0;    // ~waist height in real life
 const WALL_COLOR  = 0x3b82f6; // Tailwind blue-500 — matches the 🟦 emoji
 // Pre-round: walls are rendered as thin floor tiles so players can see
 // the layout but walk through them to reach the starting-point chair.
@@ -338,6 +341,7 @@ export class PortalSystem extends createSystem({}) {
   private roundEndsAt!: Signal<number>; // ms epoch, 0 when idle
   private score!: Signal<number>;
   private playerHealth!: Signal<number>;
+  private playerMaxHealth!: Signal<number>;
   private equippedLeft!: Signal<"sword" | null>;
   private equippedRight!: Signal<"gun" | null>;
   private roundResult!: Signal<RoundResult | null>;
@@ -350,6 +354,14 @@ export class PortalSystem extends createSystem({}) {
   private megaJumpVy = 0;
   private megaJumpFloorY = 0;
   private megaJumpLastAt = 0;
+  // ms-epoch at which the current flight window ends. 0 = not flying.
+  // While flying, the player is lifted to FLIGHT_ALTITUDE every frame
+  // and takeHit() bails, giving ~3s of invulnerable sky-walk.
+  private flyUntil = 0;
+  // 🍄 follower chain — each pickup spawns a sprite that trails the
+  // player's head at an increasing time-delay along the recorded path.
+  private mushrooms: Array<{ sprite: Sprite; delayMs: number }> = [];
+  private mushroomTrail: Array<{ x: number; y: number; z: number; t: number }> = [];
   private isDead!: Signal<boolean>;
   // Hazard damage cooldown — player invulnerable while `now` is
   // inside this window. Blocks spam damage and pairs with the red
@@ -397,7 +409,8 @@ export class PortalSystem extends createSystem({}) {
     this.roundRunning  = GameState.roundRunning(globals);
     this.roundEndsAt   = GameState.roundEndsAt(globals);
     this.score         = GameState.score(globals);
-    this.playerHealth  = GameState.playerHealth(globals);
+    this.playerHealth    = GameState.playerHealth(globals);
+    this.playerMaxHealth = GameState.playerMaxHealth(globals);
     this.equippedLeft  = GameState.equippedLeft(globals);
     this.equippedRight = GameState.equippedRight(globals);
     this.roundResult   = GameState.roundResult(globals);
@@ -460,6 +473,7 @@ export class PortalSystem extends createSystem({}) {
       if (item.kind !== 'sprite') continue;
       let mul = ITEM_TEXTURES[item.type] ? STICKER_SIZE_FACTOR : 1;
       if (item.type === 'chair') mul *= CHAIR_SIZE_MULT;
+      if (item.type === 'ghost') mul *= GHOST_SIZE_MULT;
       if (item.type === 'bird')  mul *= BIRD_SIZE_MULT;
       item.baseSize = baseline * scale * mul;
     }
@@ -498,25 +512,16 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
-  // Toggle a single wall between preview (flat + walk-through) and
-  // active (tall + solid collider). LocomotionEnvironment is added or
-  // removed on the entity so the locomotion system knows whether to
-  // treat the mesh as an obstacle.
+  // Toggle a single wall between preview (flat) and active (tall).
+  // Walls are purely visual now — no LocomotionEnvironment, no collider;
+  // with locomotion disabled, players walk through anything. Visuals
+  // still flip so the designer's layout reads correctly at round start.
   private setWallState(item: SpawnedItem, running: boolean) {
     if (item.kind !== 'wall') return;
     const mesh = item.object3D as Mesh;
     if (running) {
       mesh.scale.y = 1;
       mesh.position.set(item.origin[0], WALL_HEIGHT / 2, item.origin[2]);
-      const ent = item.entity as unknown as {
-        hasComponent?: (c: unknown) => boolean;
-        addComponent: (c: unknown, v?: Record<string, unknown>) => unknown;
-      };
-      // Only add the collider component if it isn't already attached —
-      // spawning mid-round should result in a single attachment.
-      if (!ent.hasComponent || !ent.hasComponent(LocomotionEnvironment)) {
-        ent.addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
-      }
     } else {
       mesh.scale.y = WALL_IDLE_SCALE_Y;
       mesh.position.set(
@@ -524,17 +529,6 @@ export class PortalSystem extends createSystem({}) {
         (WALL_HEIGHT * WALL_IDLE_SCALE_Y) / 2,
         item.origin[2],
       );
-      const ent = item.entity as unknown as {
-        hasComponent?: (c: unknown) => boolean;
-        removeComponent?: (c: unknown) => unknown;
-      };
-      if (ent.removeComponent && (!ent.hasComponent || ent.hasComponent(LocomotionEnvironment))) {
-        try {
-          ent.removeComponent(LocomotionEnvironment);
-        } catch {
-          // removeComponent throws if component isn't present; ignore.
-        }
-      }
     }
   }
 
@@ -793,11 +787,15 @@ export class PortalSystem extends createSystem({}) {
         // Fresh run: clear inventory + score, heal up. WeaponSystem reacts
         // via the signal subscription and despawns any weapon meshes.
         this.score.value = 0;
+        this.playerMaxHealth.value = MAX_HEALTH;
         this.playerHealth.value = MAX_HEALTH;
         this.equippedLeft.value = null;
         this.equippedRight.value = null;
         this.hasBomb.value = false;
         this.hasMegaJump.value = false;
+        this.flyUntil = 0;
+        this.clearMushrooms();
+        this.playerMaxHealth.value = MAX_HEALTH;
         this.isDead.value = false;
         this.roundPending.value = false;
         this.roundEndsAt.value = msg.endsAt;
@@ -830,6 +828,9 @@ export class PortalSystem extends createSystem({}) {
         this.equippedRight.value = null;
         this.hasBomb.value = false;
         this.hasMegaJump.value = false;
+        this.flyUntil = 0;
+        this.clearMushrooms();
+        this.playerMaxHealth.value = MAX_HEALTH;
         // HUD shows the result overlay; it clears the signal when it hides.
         this.roundResult.value = {
           reason,
@@ -1045,6 +1046,7 @@ export class PortalSystem extends createSystem({}) {
     const texturedUrl = ITEM_TEXTURES[type];
     let sizeMul = texturedUrl ? STICKER_SIZE_FACTOR : 1;
     if (type === 'chair') sizeMul *= CHAIR_SIZE_MULT;
+    if (type === 'ghost') sizeMul *= GHOST_SIZE_MULT;
     if (type === 'bird')  sizeMul *= BIRD_SIZE_MULT;
     // baseSize follows the live emoji-scale slider — sprite.scale is
     // kept in sync later via the emojiScale signal subscription too.
@@ -1279,16 +1281,18 @@ export class PortalSystem extends createSystem({}) {
         continue;
       }
 
-      // ── Fire: one discrete hit per cooldown while inside ──
+      // ── Fire: one discrete life-point hit per cooldown while inside ──
       if (hittable && item.role === 'obstacle-damage' && headD2 < fireR2) {
-        this.takeHit(FIRE_DPS);
+        this.takeHit(1);
         break;
       }
 
-      // ── Enemy touch → damage the player (sword damage to enemies is
-      //    now handled explicitly in swingSword()).
+      // ── Enemy touch → -1 life per HAZARD_COOLDOWN_MS while adjacent.
+      //    The per-enemy `dps` field is retained but no longer scales
+      //    damage — every enemy (ghost, skull, robot, snowman) costs
+      //    one life per hit so life = discrete hearts.
       if (item.role === 'enemy' && hittable && headD2 < enemyR2) {
-        this.takeHit(enemyStats(item.type).dps);
+        this.takeHit(1);
         break;
       }
     }
@@ -1321,38 +1325,110 @@ export class PortalSystem extends createSystem({}) {
   // then restore on the next tick. Locomotor reads jumpHeight when the
   // jump is *issued*, not over time, so this works even though the
   // restore happens before the player has fully come back down.
+  // ── 🍄 Follower chain ───────────────────────────────────────
+  // Each mushroom spawns an emoji sprite that trails the player at a
+  // staggered delay along the recorded head path. tickMushrooms() is
+  // called every frame (no-op when the chain is empty, so it costs
+  // nothing for players who never pick up a 'shroom).
+  private addMushroomFollower() {
+    const sprite = makeEmojiSprite('🍄', 'powerup', 0.6);
+    this.scene.add(sprite);
+    // The newest mushroom lands at the LAST position of the chain — so
+    // picking up a second mushroom places it behind the first, etc.
+    const delayMs = MUSHROOM_FOLLOWER_DELAY_MS * (this.mushrooms.length + 1);
+    this.mushrooms.push({ sprite, delayMs });
+    console.log(`[Mushroom] chain length ${this.mushrooms.length}`);
+  }
+
+  private clearMushrooms() {
+    for (const m of this.mushrooms) {
+      this.scene.remove(m.sprite);
+      const mat = m.sprite.material as SpriteMaterial;
+      if (mat.map) mat.map.dispose();
+      mat.dispose();
+    }
+    this.mushrooms = [];
+    this.mushroomTrail = [];
+  }
+
+  // Walk the trail buffer and place each mushroom at its delayed sample.
+  private tickMushrooms() {
+    if (this.mushrooms.length === 0) return;
+    const now = performance.now();
+    this.player.head.getWorldPosition(this.tempPos);
+    this.mushroomTrail.push({
+      x: this.tempPos.x,
+      y: 0.55,                        // fixed billboard height
+      z: this.tempPos.z,
+      t: now,
+    });
+    // Cap buffer at ~6 seconds of head samples (60 Hz ≈ 360 frames).
+    const MAX_SAMPLES = 360;
+    if (this.mushroomTrail.length > MAX_SAMPLES) {
+      this.mushroomTrail.splice(0, this.mushroomTrail.length - MAX_SAMPLES);
+    }
+    // For each mushroom, find the youngest sample older than `delayMs`
+    // ago and snap the sprite there. Linear scan — ≤360 samples × a
+    // handful of mushrooms is cheap.
+    for (const m of this.mushrooms) {
+      const targetT = now - m.delayMs;
+      let sample = this.mushroomTrail[0];
+      for (let i = 0; i < this.mushroomTrail.length; i++) {
+        if (this.mushroomTrail[i].t <= targetT) sample = this.mushroomTrail[i];
+        else break;
+      }
+      m.sprite.position.set(sample.x, sample.y, sample.z);
+    }
+  }
+
+  // Voice peacock-phrase entry point — same effect as picking up a
+  // feather: start a fresh 3-second flight. No pickup gate since the
+  // chant is its own activation.
   private megaJump() {
     if (this.isDead.peek()) return;
-    if (!this.hasMegaJump.peek()) {
-      console.log('[MegaJump] no ability — pick up a 🪶 first');
-      return;
-    }
+    this.startFlight();
+  }
+
+  // Lift the player to FLIGHT_ALTITUDE, start the 3-second invulnerable
+  // window, and flip hasMegaJump so WeaponSystem shows the feather badge
+  // for the active duration.
+  private startFlight() {
     const now = performance.now();
     if (now - this.megaJumpLastAt < MEGA_JUMP_COOLDOWN_MS) return;
     this.megaJumpLastAt = now;
+    this.flyUntil = now + FLIGHT_DURATION_MS;
+    this.hasMegaJump.value = true;
 
-    // LocomotionSystem.locomotor is private in the type defs but real
-    // at runtime; reach in via an `any` cast.
-    const loco = this.world.getSystem(LocomotionSystem) as unknown as {
-      locomotor?: { jump(): void };
-      config: { jumpHeight: { value: number; peek(): number } };
-    } | undefined;
-    if (!loco?.locomotor) {
-      console.log('[MegaJump] LocomotionSystem unavailable');
-      return;
-    }
-    const jumpHeight = loco.config.jumpHeight;
-    const original = jumpHeight.peek();
-    jumpHeight.value = MEGA_JUMP_HEIGHT;
-    loco.locomotor.jump();
-    // Restore on next macrotask so locomotor has read the boosted value.
-    setTimeout(() => { jumpHeight.value = original; }, 0);
+    // Instant lift — setWorldPosition on the XROrigin.
+    this.player.getWorldPosition(this.tempPos);
+    this.tempPos.y = FLIGHT_ALTITUDE;
+    setWorldPosition(this.player, this.tempPos);
 
     FX.megaJump(this.input.gamepads.left ?? this.input.gamepads.right);
+    console.log(`[Flight] invulnerable flight for ${FLIGHT_DURATION_MS}ms`);
   }
 
-  // No-op kept for callers — locomotor handles the physics now. Field
-  // state retained for any future custom-physics path.
+  // Per-frame altitude hold. Overrides gravity on the XROrigin while
+  // the flight window is active; once it expires, gravity takes over
+  // naturally and the player falls to the floor.
+  private tickFlight() {
+    const now = performance.now();
+    if (this.flyUntil === 0) return;
+    if (now >= this.flyUntil) {
+      // Flight just ended — release the altitude override + hide badge.
+      this.flyUntil = 0;
+      this.hasMegaJump.value = false;
+      return;
+    }
+    this.player.getWorldPosition(this.tempPos);
+    if (this.tempPos.y < FLIGHT_ALTITUDE) {
+      this.tempPos.y = FLIGHT_ALTITUDE;
+      setWorldPosition(this.player, this.tempPos);
+    }
+  }
+
+  // Legacy no-op — kept so update() can still call tickMegaJump(delta)
+  // without a rename in the middle of other edits.
   private tickMegaJump(_deltaSeconds: number) {
     /* intentionally empty */
   }
@@ -1378,15 +1454,42 @@ export class PortalSystem extends createSystem({}) {
   private takeHit(amount: number) {
     const now = performance.now();
     if (now < this.damageCooldownUntil) return;
+    if (now < this.flyUntil) return;   // 🪶 flight → invulnerable
     this.damageCooldownUntil = now + HAZARD_COOLDOWN_MS;
+    this.lastDamageAt.value = Date.now();       // red flash via HUD subscriber
+    FX.oof(this.input.gamepads.right ?? this.input.gamepads.left);
 
+    // Mushrooms absorb the hit — pop the tail, shrink max by the same
+    // amount each 🍄 added, and clamp life down to the new max. Classic
+    // Mario-style "grow/shrink" dynamic: you keep your extra lives only
+    // until an enemy catches you.
+    if (this.popMushroom()) {
+      const newMax = Math.max(MAX_HEALTH, this.playerMaxHealth.peek() - MUSHROOM_HEAL);
+      this.playerMaxHealth.value = newMax;
+      this.playerHealth.value = Math.min(this.playerHealth.peek(), newMax);
+      console.log(`[Hit] mushroom absorbed — ${this.mushrooms.length} left, max=${newMax}`);
+      return;
+    }
+
+    // No mushroom to absorb — real damage to life.
     const current = this.playerHealth.peek();
     const next = Math.max(0, current - amount);
     this.playerHealth.value = next;
-    this.lastDamageAt.value = Date.now();
-    console.log(`[Hit] -${amount} HP (${current} → ${next})`);
-    FX.oof(this.input.gamepads.right ?? this.input.gamepads.left);
+    console.log(`[Hit] -${amount} life (${current} → ${next})`);
     if (next <= 0) this.playerDied();
+  }
+
+  // Pop the newest mushroom off the tail — returns true if one was
+  // removed, false if the chain was already empty. Used by takeHit to
+  // decide between absorbing a hit vs taking real life damage.
+  private popMushroom(): boolean {
+    const m = this.mushrooms.pop();
+    if (!m) return false;
+    this.scene.remove(m.sprite);
+    const mat = m.sprite.material as SpriteMaterial;
+    if (mat.map) mat.map.dispose();
+    mat.dispose();
+    return true;
   }
 
   // Per-variant AI. Three distinct behaviors now:
@@ -1768,6 +1871,9 @@ export class PortalSystem extends createSystem({}) {
     this.equippedRight.value = null;
     this.hasBomb.value = false;
     this.hasMegaJump.value = false;
+    this.flyUntil = 0;
+    this.clearMushrooms();
+    this.playerMaxHealth.value = MAX_HEALTH;
     FX.roundLose(); // personal death cue — everyone else plays on
   }
 
@@ -1876,28 +1982,41 @@ export class PortalSystem extends createSystem({}) {
         FX.pickupWeapon(rightPad ?? leftPad);
         break;
       case 'weapon-feather':
-        // 🪶 grants UNLIMITED mega-jumps via the peacock voice phrase
-        // (or the J keyboard shortcut for testing).
-        this.hasMegaJump.value = true;
+        // 🪶 immediately lifts the player into a 3-second invulnerable
+        // flight. hasMegaJump is flipped on so WeaponSystem mounts the
+        // feather badge on the sword hand for the duration.
+        this.startFlight();
         FX.pickupWeapon(rightPad ?? leftPad);
         break;
       case 'goal':
         this.score.value = this.score.peek() + GOAL_POINTS;
         this.goalsCollected.value = this.goalsCollected.peek() + 1;
-        // Stars also grant a life-point heal so the player can take a
-        // ghost touch or two while racking up goals.
+        // Stars also grant a life-point heal, capped at the current
+        // live max (which may have been bumped up by 🍄 pickups).
         this.playerHealth.value = Math.min(
-          MAX_HEALTH,
+          this.playerMaxHealth.peek(),
           this.playerHealth.peek() + STAR_HEAL,
         );
         FX.pickupGoal(rightPad ?? leftPad);
         this.checkWin();
         break;
       case 'powerup':
+        // 🍌 banana — +1 life, capped at the live max.
         this.playerHealth.value = Math.min(
-          MAX_HEALTH,
+          this.playerMaxHealth.peek(),
           this.playerHealth.peek() + POWERUP_HEAL,
         );
+        FX.pickupPowerup(rightPad ?? leftPad);
+        break;
+      case 'mushroom':
+        // 🍄 — raises the MAX by MUSHROOM_HEAL and fills the new lives.
+        // Also spawns a follower sprite that trails the player at a
+        // time-delay; picking up a second mushroom lands one behind the
+        // first, forming a conga line. The max shrinks back by
+        // MUSHROOM_HEAL every time a hit pops the tail mushroom.
+        this.playerMaxHealth.value = this.playerMaxHealth.peek() + MUSHROOM_HEAL;
+        this.playerHealth.value = this.playerHealth.peek() + MUSHROOM_HEAL;
+        this.addMushroomFollower();
         FX.pickupPowerup(rightPad ?? leftPad);
         break;
     }
@@ -1941,6 +2060,13 @@ export class PortalSystem extends createSystem({}) {
     // Mega-jump runs any time so an in-flight jump completes cleanly
     // even at round-end / death.
     this.tickMegaJump(delta);
+    // Feather flight — holds the player at altitude and counts down
+    // the invulnerability window. Runs unconditionally so it can
+    // release the override cleanly at round-end or after death.
+    this.tickFlight();
+    // 🍄 follower chain — snaps each sprite to a delayed sample of
+    // the player's head path. Cheap no-op when the chain is empty.
+    this.tickMushrooms();
     // Wall red-flash (on sword hit) runs any time so the tint resets
     // cleanly regardless of round state.
     this.tickWallFlash();

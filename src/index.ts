@@ -13,10 +13,9 @@
 //   4. Skip HUDSystem            — head-locked HUD has no head here.
 //   5. Orbit camera + DOM HUD    — added on top of the existing scene.
 //
-// Everything else (locomotion features, sceneUnderstanding flags,
-// floor + safety floor + LocomotionEnvironment) stays untouched so
-// IWSDK initialises identically. Stripping any of that in spectator
-// mode previously caused half the entities to silently not spawn.
+// Everything else (sceneUnderstanding flags, floor geometry) stays
+// untouched so IWSDK initialises identically. Locomotion + teleport
+// are disabled globally — the game is physical-walking only.
 
 import {
   Mesh,
@@ -31,8 +30,6 @@ import {
   AmbientLight,
   DirectionalLight,
   Vector3,
-  EnvironmentType,
-  LocomotionEnvironment,
 } from "@iwsdk/core";
 
 import { PortalSystem } from "./portal.js";
@@ -55,7 +52,12 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     features: { handTracking: true, layers: true },
   },
   features: {
-    locomotion: { useWorker: true },
+    // No IWSDK locomotion or teleport — the game is designed for players
+    // to physically walk around the guardian. Recentering is handled by
+    // the Meta button on the headset (OS-level). Programmatic teleports
+    // (round-start spawn, 🪶 flight altitude hold) use setWorldPosition
+    // directly on the XROrigin, which works without the feature.
+    locomotion: false,
     grabbing: false,
     physics: false,
     sceneUnderstanding: true,
@@ -143,22 +145,12 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     });
     const floorMesh = new Mesh(floorGeom, floorMat);
     const floorEntity = world.createTransformEntity(floorMesh);
-    floorEntity.addComponent(LocomotionEnvironment, {
-      type: EnvironmentType.STATIC,
-    });
     stageEntities.push(floorEntity);
   });
 
-  // Invisible safety floor — same on both pages. Spectator doesn't
-  // walk on it but leaving it in keeps the scene identical.
-  const safeGeom = new PlaneGeometry(200, 200);
-  safeGeom.rotateX(-Math.PI / 2);
-  const safeMat = new MeshStandardMaterial({ visible: false });
-  const safeMesh = new Mesh(safeGeom, safeMat);
-  safeMesh.position.y = -0.01;
-  world
-    .createTransformEntity(safeMesh)
-    .addComponent(LocomotionEnvironment, { type: EnvironmentType.STATIC });
+  // (The old invisible safety-floor + LocomotionEnvironment pair was
+  // only needed by the locomotor; with locomotion disabled entirely,
+  // the player is pinned to the physical floor by the headset itself.)
 
   if (isSpectator) {
     setupSpectatorCamera(camera);

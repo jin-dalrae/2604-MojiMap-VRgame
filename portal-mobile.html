@@ -160,8 +160,11 @@
         object-fit: contain;
         display: block;
       }
-      /* Bird reads a little small at grid-cell scale — bump it 5%. */
-      .sticker-bird { transform: scale(1.05); }
+      /* Per-species size tweaks — applied to both grid cells and palette
+         icons via the sticker-<type> class set by iconHtml(). */
+      .sticker-bird  { transform: scale(1.05); }
+      .sticker-ghost { transform: scale(1.10); }
+      .sticker-chair { transform: scale(1.10); }
 
       /* Player dots live above the 8×8 data area only — inset matches
          the grid's header label strip so 0–100% maps to the data area. */
@@ -175,13 +178,12 @@
       }
       .player-dot {
         position: absolute;
-        width: 10px; height: 10px;
-        background: var(--pcolor, #6366f1);
-        border: 2px solid #fff;
-        border-radius: 50%;
         transform: translate(-50%, -50%);
-        box-shadow: 0 0 8px var(--pcolor-glow, rgba(99,102,241,0.7));
+        font-size: 16px;          /* small — stays readable over stickers */
+        line-height: 1;
+        filter: drop-shadow(0 0 4px var(--pcolor-glow, rgba(99,102,241,0.75)));
         transition: left 0.1s, top 0.1s;
+        pointer-events: none;
       }
 
       /* ── Attack palette (bottom) — 7 × 2 grid; 13 items + 1 empty ── */
@@ -372,6 +374,8 @@
         { type: 'poopoodoodoo', icon: '💩', label: 'Poo',     role: 'weapon-poo'      },
         { type: 'feather',      icon: '🪶', label: 'Feather', role: 'weapon-feather'  },
         { type: 'star',         icon: '⭐', label: 'Star',    role: 'goal'            },
+        { type: 'banana',       icon: '🍌', label: 'Banana',  role: 'powerup'         },
+        { type: 'mushroom',     icon: '🍄', label: 'Mushroom',role: 'mushroom'        },
         { type: 'bird',         icon: '🦅', label: 'Bird',    role: 'bird'            },
         { type: 'fire',         icon: '🔥', label: 'Fire',    role: 'obstacle-damage' },
         { type: 'robot',        icon: '🤖', label: 'Robot',   role: 'enemy'           },
@@ -644,6 +648,7 @@
         if (!p) {
           p = document.createElement('div');
           p.className = 'player-dot';
+          p.textContent = '🧑';  // user emoji — replaces the old coloured dot
           document.getElementById('players').appendChild(p);
           players.set(id, p);
         }
