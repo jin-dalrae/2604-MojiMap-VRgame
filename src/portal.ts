@@ -1214,8 +1214,12 @@ export class PortalSystem extends createSystem({}) {
       if (!roundRunning) {
         // Snap to neutral state so the idle view stays calm. Restore
         // origin so enemies that wandered during chase return home.
+        // EXCEPT birds — they're always airborne and animate themselves
+        // via tickBirds(), so leave their position alone.
         s.scale.set(item.baseSize, item.baseSize, 1);
-        s.position.set(item.origin[0], item.origin[1], item.origin[2]);
+        if (item.role !== 'bird') {
+          s.position.set(item.origin[0], item.origin[1], item.origin[2]);
+        }
         mat.opacity = 1;
         continue;
       }
@@ -1537,12 +1541,9 @@ export class PortalSystem extends createSystem({}) {
 
     const nowMs = performance.now();
     for (const item of this.spawnedEntities.values()) {
-      // Birds have their own AI track — handled separately since they
-      // fly, fall, and land rather than chasing/wandering like enemies.
-      if (item.role === 'bird') {
-        this.tickBird(item, deltaSeconds, time);
-        continue;
-      }
+      // Birds are ticked unconditionally in update() — skip them here
+      // so they don't double-tick during rounds.
+      if (item.role === 'bird') continue;
       if (item.role !== 'enemy') continue;
       const pos = item.object3D.position;
 
@@ -1614,6 +1615,15 @@ export class PortalSystem extends createSystem({}) {
       if (stats.bobAmp > 0) {
         pos.y = item.origin[1] + 0.5 + Math.sin(time * stats.bobSpeed) * stats.bobAmp;
       }
+    }
+  }
+
+  // Iterate every spawned bird and run its tickBird state machine.
+  // Called every frame (round or no round) so birds are always airborne.
+  private tickBirds(deltaSeconds: number, time: number) {
+    for (const item of this.spawnedEntities.values()) {
+      if (item.role !== 'bird') continue;
+      this.tickBird(item, deltaSeconds, time);
     }
   }
 
@@ -2047,6 +2057,10 @@ export class PortalSystem extends createSystem({}) {
     const time = performance.now() / 1000;
     const roundRunning = this.roundRunning.peek();
     this.animateItems(time, roundRunning);
+
+    // Birds fly continuously — round or no round. They're scenery as much
+    // as gameplay, and a frozen eagle stuck on the floor breaks the vibe.
+    this.tickBirds(delta, time);
 
     // Gameplay interactions only fire while the round is live. Gives the
     // planner time to place items before the contestant can grab them.

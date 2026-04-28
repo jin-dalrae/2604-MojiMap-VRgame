@@ -1,5 +1,35 @@
 # Prompt Log
 
+## 2026-04-28T19:59:57Z
+
+```
+[Image #5] add some more cute image components in the game!  (image source: /Users/dalrae/Downloads/poopoo_sign_when_voice.jpeg)
+```
+
+## 2026-04-28T20:01:00Z
+
+```
+did you put the images as guided with the image names?
+```
+
+## 2026-04-28T20:10:00Z
+
+```
+birds should be flying after game starts.
+```
+
+## 2026-04-28T20:20:00Z
+
+```
+you can shoot the birds with the watergun.
+```
+
+## 2026-04-28T20:30:00Z
+
+```
+git commit and push
+```
+
 ## 2026-04-14T00:00:00Z
 
 ```

@@ -17,6 +17,8 @@ import {
   AdditiveBlending,
   Vector3,
   Object3D,
+  TextureLoader,
+  SRGBColorSpace,
 } from "@iwsdk/core";
 import {
   GameActions,
@@ -45,6 +47,39 @@ type Bomb = {
   lastTickAt: number;          // throttle for the tick sound
   exploded: boolean;           // kill path runs once
 };
+
+// "POOPOO DOODOO" comic-book sign that pops up in front of the player's
+// face for ~1.2s the instant the voice phrase is detected. Pure feedback
+// candy — no gameplay effect.
+const POOPOO_SIGN_MS = 1200;
+const POOPOO_SIGN_URL = "/textures/poopoo_sign_when_voice.jpeg";
+type PoopooSign = {
+  sprite: Sprite;
+  spawnedAt: number;
+};
+
+let poopooSignTexture: ReturnType<TextureLoader["load"]> | null = null;
+function loadPoopooSignTexture() {
+  if (poopooSignTexture) return poopooSignTexture;
+  const loader = new TextureLoader();
+  poopooSignTexture = loader.load(POOPOO_SIGN_URL);
+  poopooSignTexture.colorSpace = SRGBColorSpace;
+  return poopooSignTexture;
+}
+
+function makePoopooSignSprite(): Sprite {
+  const mat = new SpriteMaterial({
+    map: loadPoopooSignTexture(),
+    transparent: true,
+    depthTest: false,   // always draws on top — it's HUD-style feedback
+    depthWrite: false,
+  });
+  const s = new Sprite(mat);
+  // Image is roughly 2:1 wide (POOPOO over DOODOO inside a starburst).
+  s.scale.set(0.9, 0.45, 1);
+  s.renderOrder = 999;
+  return s;
+}
 
 function makePoopSprite(size = 0.45): Sprite {
   const canvas = document.createElement("canvas");
@@ -80,6 +115,7 @@ function makeBlastMesh(): Mesh {
 export class BombSystem extends createSystem({}) {
   private bombs: Bomb[] = [];
   private lastSpawnAt = 0;
+  private poopooSigns: PoopooSign[] = [];
 
   init() {
     GameActions.setSpawnBomb(
@@ -184,9 +220,22 @@ export class BombSystem extends createSystem({}) {
     };
     this.bombs.push(bomb);
     FX.bombThrow(this.input.gamepads.right ?? this.input.gamepads.left);
+    this.flashPoopooSign(headPos, forward);
+  }
+
+  // Pop a "POOPOO DOODOO" comic sign 0.8m in front of the player's face
+  // for a beat — visual confirmation the phrase landed.
+  private flashPoopooSign(headPos: Vector3, forward: Vector3) {
+    const sprite = makePoopooSignSprite();
+    sprite.position.copy(headPos)
+      .addScaledVector(forward, 0.8);
+    sprite.position.y += 0.05; // a touch above eye line
+    this.scene.add(sprite);
+    this.poopooSigns.push({ sprite, spawnedAt: performance.now() });
   }
 
   update(delta: number) {
+    this.updatePoopooSigns();
     if (this.bombs.length === 0) return;
     const now = performance.now();
 
@@ -263,6 +312,38 @@ export class BombSystem extends createSystem({}) {
     const p = b.root.position;
     explode?.(p.x, p.y, p.z, BOMB_EXPLOSION_RADIUS);
     FX.bombExplode(this.input.gamepads.right ?? this.input.gamepads.left);
+  }
+
+  private updatePoopooSigns() {
+    if (this.poopooSigns.length === 0) return;
+    const now = performance.now();
+    for (let i = this.poopooSigns.length - 1; i >= 0; i--) {
+      const s = this.poopooSigns[i];
+      const t = (now - s.spawnedAt) / POOPOO_SIGN_MS;
+      if (t >= 1) {
+        this.scene.remove(s.sprite);
+        const mat = s.sprite.material as SpriteMaterial;
+        mat.dispose();
+        this.poopooSigns.splice(i, 1);
+        continue;
+      }
+      // Pop-in (0-15%) → hold (15-75%) → fade-out (75-100%).
+      const mat = s.sprite.material as SpriteMaterial;
+      let opacity = 1;
+      let scale = 1;
+      if (t < 0.15) {
+        const k = t / 0.15;
+        scale = 0.6 + 0.5 * k;       // overshoot to 1.1 then settle
+        opacity = k;
+      } else if (t < 0.25) {
+        scale = 1.1 - (t - 0.15) / 0.1 * 0.1;
+      } else if (t > 0.75) {
+        const k = (t - 0.75) / 0.25;
+        opacity = 1 - k;
+      }
+      mat.opacity = opacity;
+      s.sprite.scale.set(0.9 * scale, 0.45 * scale, 1);
+    }
   }
 
   private disposeBomb(b: Bomb) {
