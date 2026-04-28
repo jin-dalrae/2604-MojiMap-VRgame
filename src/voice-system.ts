@@ -201,25 +201,27 @@ export class VoiceSystem extends createSystem({}) {
   }
 
   private checkPhrase(text: string) {
+    const g = this.world.globals as Record<string, unknown>;
     if (matchesBombPhrase(text)) {
       console.log('[Voice] bomb phrase matched');
       this.interim = ""; // don't double-trigger as the rest streams in
-      const spawn = GameActions.spawnBomb(this.world.globals as Record<string, unknown>);
-      spawn?.();
+      // BombSystem's spawnBomb already flashes the POOPOO DOODOO sign.
+      GameActions.spawnBomb(g)?.();
       return;
     }
     if (matchesPeacockPhrase(text)) {
       console.log('[Voice] peacock phrase matched');
       this.interim = "";
-      const jump = GameActions.megaJump(this.world.globals as Record<string, unknown>);
-      jump?.();
+      GameActions.megaJump(g)?.();
+      // Comic sign confirmation — purple/yellow plumage colors.
+      GameActions.flashSign(g)?.({ text: "PEACOCK\nFLY!", color: "#a78bfa" });
       return;
     }
     if (matchesBirdPoopPhrase(text)) {
       console.log('[Voice] bird-poop phrase matched');
       this.interim = "";
-      const poop = GameActions.birdPoop(this.world.globals as Record<string, unknown>);
-      poop?.();
+      GameActions.birdPoop(g)?.();
+      GameActions.flashSign(g)?.({ text: "CAW CAW!", color: "#fde047" });
       return;
     }
   }

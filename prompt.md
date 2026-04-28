@@ -30,6 +30,24 @@ you can shoot the birds with the watergun.
 git commit and push
 ```
 
+## 2026-04-28T20:35:00Z
+
+```
+what do you think we can add more? is the small boundary of moving is resolved?
+```
+
+## 2026-04-28T20:42:00Z
+
+```
+let's do them all. and update the readme reading like the game manual.
+```
+
+## 2026-04-28T20:55:00Z
+
+```
+git commit push
+```
+
 ## 2026-04-14T00:00:00Z
 
 ```

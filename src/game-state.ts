@@ -277,6 +277,26 @@ export type AreaDamageFn = (x: number, y: number, z: number, radius: number) => 
 // Spawn a falling bomb at a world position (zero horizontal velocity).
 export type DropBombFn = (x: number, y: number, z: number) => void;
 
+// Comic-style sign flash in front of the player's face.
+// Either provide a PNG `url` or a `text` (rendered to canvas).
+export type SignFlashFn = (opts: {
+  url?: string;
+  text?: string;
+  color?: string;
+  durationMs?: number;
+  aspect?: number;
+}) => void;
+// Floating score popup ("+5", "BIRD KO!") at a world position.
+export type PopupAtFn = (
+  x: number,
+  y: number,
+  z: number,
+  text: string,
+  color: string,
+) => void;
+// Burst of feather/cotton-puff particles at a world position.
+export type FeatherPuffFn = (x: number, y: number, z: number) => void;
+
 export const GameActions = {
   damageEnemy: (g: Globals) => g.damageEnemy as DamageFn | undefined,
   setDamageEnemy: (g: Globals, fn: DamageFn) => { g.damageEnemy = fn; },
@@ -300,6 +320,13 @@ export const GameActions = {
   // birds and calls dropBombAt at each one's position.
   birdPoop: (g: Globals) => g.birdPoop as FireFn | undefined,
   setBirdPoop: (g: Globals, fn: FireFn) => { g.birdPoop = fn; },
+  // Visual feedback layer — owned by SignSystem.
+  flashSign:    (g: Globals) => g.flashSign as SignFlashFn | undefined,
+  setFlashSign: (g: Globals, fn: SignFlashFn) => { g.flashSign = fn; },
+  popupAt:      (g: Globals) => g.popupAt as PopupAtFn | undefined,
+  setPopupAt:   (g: Globals, fn: PopupAtFn) => { g.popupAt = fn; },
+  featherPuffAt:    (g: Globals) => g.featherPuffAt as FeatherPuffFn | undefined,
+  setFeatherPuffAt: (g: Globals, fn: FeatherPuffFn) => { g.featherPuffAt = fn; },
 };
 
 // Round end reasons shared with the server / portal.

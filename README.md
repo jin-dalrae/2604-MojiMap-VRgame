@@ -1,133 +1,197 @@
-# 🌌 MojiMap — an AR emoji arena
+# 🌌 MojiMap — Game Manual
 
-An asymmetric, multi-screen WebXR party game built with the **Immersive Web SDK (IWSDK)**. One VR player steps into a Meta Quest headset, a designer drags emojis onto a grid from a laptop, phones join as attackers, and a broadcast view streams the whole thing to a crowd. Physical walking is the only locomotion — the map is sized to fit inside a room-scale Quest guardian.
+**A WebXR emoji arena built with the Immersive Web SDK.**
+One player straps on a Quest. A designer drops emojis onto an 8×8 grid from a laptop. Phones in the audience throw attacks. A broadcast view streams the whole thing to a TV. You walk — physically — around your living room and try to survive long enough to collect every ⭐ on the map.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![WebXR](https://img.shields.io/badge/WebXR-Quest%203-brightgreen.svg)
 
 ---
 
-## 🎮 The five screens
+## 🎯 Your goal
 
-| Screen                   | URL              | Who uses it                                                                                                 |
-| ------------------------ | ---------------- | ----------------------------------------------------------------------------------------------------------- |
-| **VR player**            | `/`              | Contestant in the Quest. Walks around, collects ⭐, fights enemies, dodges hazards.                          |
-| **Portal (designer)**    | `/portal`        | Host on a laptop. Drags emojis onto an 8×8 grid, tunes sliders, starts/ends rounds, clears the board.       |
-| **Portal Mobile**        | `/portal-mobile` | Spectators on phones. Tap an emoji to drop an attack (target a cell or opt into random mode).              |
-| **Broadcast**            | `/broadcast`     | Read-only orbit camera + live leaderboard. What you point at a TV or projector for the audience.            |
-| **Server**               | `:3001` (Node)   | Authoritative state: grid placements, round timer, user presence, admin password for destructive actions.   |
+Collect every ⭐ on the board before the timer runs out — and stay alive while doing it.
 
-Clients talk to the server over one WebSocket. Every connection declares a role (`vr` / `portal` / `mobile` / `broadcast`) on open — only `vr` connections are ever promoted to "user characters" visible in the world and on the leaderboard.
+You win the round when:
+- **Every ⭐ is collected.** This is the primary win condition.
 
----
-
-## 🕹️ Game rules
-
-### The round
-
-1. Designer drags emojis onto the grid (weapons, goals, enemies, hazards, a spawn chair) and sets the round duration.
-2. Clicks **Start Round** → server enters *pending* state.
-3. The VR player walks to the chair 🪑 and presses SELECT → the timer starts.
-4. Round ends on **all stars collected** (win), **player death** (game-over for that player — round continues for everyone else), **timer expiry**, or **host-stopped**.
-
-### Life points
-
-- 5 life points baseline, shown as a row of ❤ / ♡ hearts on the VR HUD.
-- Getting touched by an enemy (within close range) → red flash + oof cue + -1 life, with a 1.1 s per-hit cooldown.
-- Fire tiles 🔥 deal damage on the same cooldown while you stand on one.
-
-### Combat
-
-| Tool      | Effect                                                                              | Activation                                       |
-| --------- | ----------------------------------------------------------------------------------- | ------------------------------------------------ |
-| 🗡️ Sword / 🔨 Hammer | 1-hit kill on any enemy. Left-hand melee, fast swing; contact detection uses tip velocity. | Pick up; swing your arm or press the left trigger. |
-| 🔫 Water gun          | 1-hit kill. Right-hand projectile.                                                  | Pick up; right trigger.                          |
-| Bare hands            | 2-hit kill (half a sword).                                                          | No pickup needed — just move an empty left hand fast. |
-| 💩 Voice bomb         | Thrown AoE grenade. Unlimited once unlocked.                                        | Pick up 💩 once, then say *"poo poo doo doo"* (or press **B**). |
-| 🦅 Bird poop          | Every flying bird drops a bomb straight down.                                       | Say *"kaka"*, *"gaga"*, or *"caw caw"*.          |
-| 🪶 Feather flight     | Lifts you to 3 m for 3 s. **Invulnerable** while flying.                            | Pick up 🪶 — flight starts immediately. Also by saying *"I'm a peacock … fly"*. |
-
-### Pickups
-
-| Item       | Effect                                                                                          |
-| ---------- | ----------------------------------------------------------------------------------------------- |
-| ⭐ Star     | +1 goal progress, +1 life (up to current max). Collect all stars to win the round.              |
-| 🍌 Banana  | +1 life (up to current max).                                                                    |
-| 🍄 Mushroom | **Raises your max by +2** and fills those lives. Every mushroom spawns a follower that trails you along your path — pick up three and you get a conga line. |
-| 🪑 Chair   | Spawn point for the ready-check.                                                                |
-
-### Mushroom economy (Mario-style)
-
-- Picking up a 🍄 pushes you to 7/7 lives (5/5 → 7/7). Another one → 9/9, etc.
-- Taking a hit **pops the tail mushroom** instead of reducing life: max shrinks by 2, you're clamped back to the new max. No actual life damage while you have 'shrooms.
-- When the chain is empty, hits take real life.
-
-### Enemies
-
-| Emoji | Behaviour                                                                           |
-| ----- | ----------------------------------------------------------------------------------- |
-| 🤖 Robot   | Territorial — only chases within 3 m aggro range. Hits hard.                      |
-| 👻 Ghost   | Slow, relentless, **phases through walls**.                                       |
-| 💀 Skull   | Normal-speed stalker, occasionally switches targets.                              |
-| ⛄ Snowman | Slowest on the board, light touch damage.                                          |
-| 🦅 Eagle (bird) | Flies high, needs one gun shot to down.                                      |
-
-All enemies have 2 HP so the 1-hit weapon / 2-hit fist rule holds.
+You lose the round when:
+- **Your life points hit zero.** You become a spectator until the round ends.
+- **The timer expires** with stars still on the board.
+- **The host stops the round.**
 
 ---
 
-## 🛠️ Movement model
+## 🕹️ Getting in
 
-Physical walking only. No thumbstick glide, no teleport ray, no snap turn. The map is scaled to fit inside a Quest guardian — default 6 m × 6 m (slider range 3.2 m – 16 m). Recentering is handled by the Meta button on the headset.
+1. The host (designer) drops a 🪑 chair somewhere on the grid and clicks **Start Round**.
+2. Put on your Quest. Open the URL the host gives you. Tap **Enter VR**.
+3. Walk physically to the chair. When you're standing on it, press the **right trigger (SELECT)**.
+4. The timer starts. The board comes alive. Go.
 
-Programmatic position changes exist in two places (round-start spawn at the chair, and the 🪶 flight altitude hold); both write directly to the XROrigin transform and don't go through `LocomotionSystem`.
-
----
-
-## 🎙️ Voice
-
-VR clients open a WebRTC PeerConnection to OpenAI's Realtime API (transcription-only). The server exchanges the real key for a short-lived `client_secret`, so the browser never sees the long-lived credential. Phrase matchers in `src/voice-system.ts` listen for:
-
-- `/o{2,}/ × 3+` → bomb throw (handles every *"poo poo doo doo"* variant, plus *ププルル*, *Boo-boo*, etc.)
-- `/\b(im|i am)\s+a\s+peacock\b.*\bfly\b/` → feather flight
-- `/\b([kgc]a{1,2}w?\s*){2,}\b/` → every flying bird drops a 💩 bomb
-
-Voice requires `OPENAI_API_KEY` on the server. Keyboard fallbacks exist for every phrase (see `src/portal.ts:setupKeyboard`).
+> **No thumbstick movement, no teleport.** The whole game is sized to fit inside your room-scale Quest guardian. If you want to move, walk. If your guardian is set to "stationary" (a small circle), reset it to "room scale" before starting — otherwise the runtime will pin you to a 1m bubble.
 
 ---
 
-## 🏁 Getting started
+## 🎮 Controls
 
-### Prerequisites
-- Node.js ≥ 18
-- A Quest 2/3 (or any WebXR-capable headset) for the VR client
-- A laptop and one or two phones for the other screens
+| Input                      | Effect                                                                       |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| **Walk physically**        | Move around the map. Only locomotion mode there is.                           |
+| **Right trigger (SELECT)** | Confirm at chair → start round. After that: fire 🔫 water gun if equipped.    |
+| **Left trigger**           | Swing 🗡️ sword / 🔨 hammer if equipped (you can also just swing your arm).    |
+| **Empty hand swing (left)** | Bare-hands attack — 2 hits to kill instead of 1.                             |
+| **Voice phrases**          | Trigger abilities you've unlocked (see *Voice Commands* below).               |
+| **B key (desktop emulator)** | Throw 💩 bomb (debug shortcut for the voice trigger).                       |
 
-### Install & run locally
+---
+
+## ❤ Life points
+
+You start every round with **5 hearts** ❤❤❤❤❤.
+
+| Damage source            | Hits cost |
+| ------------------------ | --------- |
+| Touched by an enemy      | -1 life   |
+| Standing on a 🔥 fire tile | -1 / sec  |
+| 💥 Bomb blast (yours or someone else's) | -1 life |
+
+Damage has a **1.1 second cooldown** — you can't be combo-killed by walking through a clump of enemies. You'll see a red flash on the HUD and hear an *oof* sound when you take a hit.
+
+### Mushroom shield
+
+Picking up a 🍄 raises your **max hearts by 2** and fills them in. Hits with 🍄s in your stack don't damage you — they pop the tail mushroom off the conga line behind you instead. When the line is empty, hits go back to costing real life. Stack as many as you can find.
+
+---
+
+## 🎒 Pickups
+
+Walk through any of these to grab them. Pickups are **shared** between players — first one to it wins.
+
+| Emoji | Name        | What it does                                                               |
+| ----- | ----------- | -------------------------------------------------------------------------- |
+| ⭐    | Star        | +1 goal progress. Heals 1 life. Collect them all to win.                    |
+| 🍌    | Banana      | +1 life (up to your current max).                                          |
+| 🍄    | Mushroom    | +2 max life, fills new hearts, spawns a follower (Mario-style conga).      |
+| 🪑    | Chair       | Spawn point. Walk to it pre-round and press SELECT to begin.                |
+| 🗡️    | Sword       | Left-hand melee weapon. 1-hit kill on enemies.                              |
+| 🔨    | Hammer      | Same as sword — different sticker, same swing.                              |
+| 🔫    | Water gun   | Right-hand projectile weapon. 1-hit kill on enemies *and* flying birds.     |
+| 💩    | Bomb item   | Unlocks the voice-bomb ability for the rest of the round (unlimited throws). |
+| 🪶    | Feather     | Lifts you to **3 m** for 3 seconds. **Invulnerable** while flying.          |
+
+---
+
+## 🦴 Combat
+
+| Tool      | Damage | Activation                                    |
+| --------- | ------ | --------------------------------------------- |
+| 🗡️ Sword / 🔨 hammer | 1-hit kill | Pick up. Swing your left arm fast, or hold the left trigger. |
+| 🔫 Water gun         | 1-hit kill, including flying birds | Right trigger. Aim with your wrist. |
+| 👊 Bare hands         | 2-hit kill | No pickup. Just swing an empty left hand fast. |
+| 💩 Bomb              | AoE blast | Pick up 💩 once, then say *"poo poo doo doo"*.  |
+
+> **Pro tip:** the water gun is the only weapon that can hit a 🦅 eagle in flight — and every eagle you down drops a 🪶 feather where it lands. Hunt them.
+
+---
+
+## 🦅 Enemies
+
+| Emoji | Name     | Behaviour                                                              |
+| ----- | -------- | ---------------------------------------------------------------------- |
+| 🤖    | Robot    | Walks in a straight line until it bumps a wall, then turns.            |
+| 👻    | Ghost    | Slow, relentless, **phases through walls**. Always heading for you.     |
+| 💀    | Skull    | Orbits in circles around its spawn point. Switches targets occasionally. |
+| ⛄    | Snowman  | Slowest on the board, light touch damage.                              |
+| 🦅    | Eagle    | Flies high overhead. Drops a 🪶 when shot down.                         |
+
+All enemies have **2 HP**, so the 1-hit / 2-hit weapon rule holds. The 🦅 eagle is special: you can only hit it with the 🔫 water gun (or a 💩 bomb caught in its AoE).
+
+---
+
+## 🎙️ Voice commands
+
+The Quest mic is hot the moment you grant permission (first SELECT press). Three phrases trigger abilities — when one fires you'll see a comic-book sign pop up in front of you.
+
+| Say…                                | Effect                                                                | Pre-req                |
+| ----------------------------------- | --------------------------------------------------------------------- | ---------------------- |
+| *"Poo poo doo doo"* (any "oo" chant) | Throw a 💩 bomb in front of you (AoE, ~1.5s fuse).                    | Picked up 💩 once.     |
+| *"I'm a peacock … fly!"*            | Mega jump — you launch up to flight altitude, invulnerable while up.  | Picked up 🪶 once.     |
+| *"Caw caw"* / *"kaka"* / *"gaga"*   | Every flying 🦅 on the board drops a 💩 bomb straight down on whoever's underneath. | None — always available. |
+
+The matchers are loose on purpose so any imitation of the sound works. The bomb matcher counts "oo" sounds (3+ triggers it), so *"Foo-foo Boo-boo"*, *ププルル*, etc. all work.
+
+---
+
+## 🪶 Reward loop
+
+Killing things is rewarding here, not just necessary:
+
+- Down a 🦅 **with the water gun** → it falls, lands upside-down, and drops a 🪶 feather right where it crashed.
+- A **+points** popup floats up from the kill site.
+- A puff of feathers bursts outward.
+- A **"BIRD KO!"** comic sign flashes in front of you.
+
+Now you've got flight on demand. Use it to escape a corner, or to dodge a phone-attacker's incoming 💀.
+
+---
+
+## 📺 The five screens
+
+This is a multi-screen, asymmetric game. One headset is the player; everyone else is involved through other screens.
+
+| Screen             | URL              | Who's on it                                                                          |
+| ------------------ | ---------------- | ------------------------------------------------------------------------------------ |
+| **VR**             | `/`              | The contestant in the Quest. The whole game-feel lives here.                          |
+| **Portal**         | `/portal`        | The host on a laptop. Drags emojis onto the grid, tunes sliders, runs the round timer. |
+| **Portal Mobile**  | `/portal-mobile` | Spectators on phones. Tap an emoji to drop an attack on a chosen cell (or a random one). |
+| **Broadcast**      | `/broadcast`     | Read-only orbit camera + live leaderboard. Point this at a TV or projector.           |
+| **Server**         | `:3001` (Node)   | Authoritative state — grid, timer, presence, voice token mint, admin password.        |
+
+All clients talk to the server over a single WebSocket. Each connection declares its role on open; only `vr` connections become "user characters" you see in the world.
+
+---
+
+## 🛠️ Hosting a session
+
+### Quick start (local network)
 
 ```bash
 npm install
 
-# in one terminal — the state server (also serves /api/realtime-token)
-export OPENAI_API_KEY="sk-..."   # optional, required for voice triggers
-export ADMIN_PWD="changeme"      # optional, required for portal Clear
+# terminal 1 — state server
+export OPENAI_API_KEY="sk-..."   # optional, only needed for voice triggers
+export ADMIN_PWD="changeme"      # optional, only needed for the portal Clear button
 node server.js
 
-# in another terminal — Vite dev server (HMR, HTTPS with self-signed cert)
+# terminal 2 — Vite dev server (HTTPS, HMR)
 npm run dev
-
-# open:
-#   VR          → https://<your-ip>:8081/
-#   Portal      → https://<your-ip>:8081/portal.html
-#   Mobile      → https://<your-ip>:8081/portal-mobile.html
-#   Broadcast   → https://<your-ip>:8081/broadcast.html
 ```
 
-The Quest needs HTTPS. Either generate a self-signed cert under `.certs/` (the Vite config picks it up) or use `ngrok` / `cloudflared` to tunnel.
+Then open:
 
-### Production
+- **VR**         → `https://<your-ip>:8081/`
+- **Portal**     → `https://<your-ip>:8081/portal.html`
+- **Mobile**     → `https://<your-ip>:8081/portal-mobile.html`
+- **Broadcast**  → `https://<your-ip>:8081/broadcast.html`
 
-Railway hosts the WebSocket + token server (see `docs/deploy.md`). Vercel hosts the static front-ends. `ADMIN_PWD` for the clear button is a Railway env var — defaults to `admin` if unset.
+The Quest needs HTTPS. Generate a self-signed cert under `.certs/` (Vite picks it up automatically) or tunnel with `ngrok` / `cloudflared`.
+
+### Deploying
+
+- **Server**: Railway hosts the WebSocket + token server. See `docs/deploy.md`.
+- **Front-ends**: Vercel hosts the static pages (VR, portal, mobile, broadcast).
+- `OPENAI_API_KEY` only needs to live on the Railway side — the browser fetches a short-lived token over `/api/realtime-token`.
+
+---
+
+## 🧪 Testing tips
+
+- **Always type-check first**: `npx tsc --noEmit`. IWSDK init failures often look silent at runtime.
+- **IWER emulator** lets you "play" without a headset on `https://localhost:8081`. WASD + mouse moves the fake head; the toolbar fires controllers.
+- **Voice**: run the server with `OPENAI_API_KEY` set, grant mic permission on first interaction, then chant.
+- **Multi-player**: open `/` on two headsets pointed at the same server. Both will show up on the portal leaderboard and broadcast view.
+- **Stuck in a small circle?** Quest is using the seated/stationary reference space. Reset to room-scale guardian and re-enter VR.
 
 ---
 
@@ -135,42 +199,34 @@ Railway hosts the WebSocket + token server (see `docs/deploy.md`). Vercel hosts 
 
 ```
 src/
-├── index.ts                 # World.create() + system registration (VR + broadcast entry)
-├── portal.ts                # PortalSystem — the 1.9k-line game loop (items, AI, combat, mushroom chain)
-├── game-state.ts            # Shared signals, tuning constants, ItemRole enum
-├── weapon-system.ts         # Sword/gun mesh attachment to controller grips
-├── projectile-system.ts     # Water-gun bullets
-├── bomb-system.ts           # 💩 bomb state machine (flying → blinking → exploding)
-├── voice-system.ts          # OpenAI Realtime transcription + phrase matchers
-├── hud-system.ts            # Head-locked VR HUD (timer, score, hearts, banners)
-└── game-fx.ts               # Haptic + WebAudio cues
+├── index.ts              # World.create() + system registration (VR + broadcast entry)
+├── portal.ts             # PortalSystem — items, AI, combat, mushroom chain, bird kill loop
+├── game-state.ts         # Shared signals, tuning constants, ItemRole enum
+├── weapon-system.ts      # Sword/gun mesh attachment to controller grips
+├── projectile-system.ts  # Water-gun bullets
+├── bomb-system.ts        # 💩 bomb state machine (flying → blinking → exploding)
+├── voice-system.ts       # OpenAI Realtime transcription + phrase matchers
+├── sign-system.ts        # Comic signs, score popups, feather puffs
+├── hud-system.ts         # Head-locked VR HUD (timer, score, hearts, banners)
+└── game-fx.ts            # Haptic + WebAudio cues
 
-portal.html                  # Designer desktop + mobile strip (grid editor, round controls)
-portal-mobile.html           # Attacker phone (7×2 palette, tap-to-place or random mode)
-broadcast.html               # Spectator orbit view — loads src/index.ts in spectator mode
+portal.html               # Designer desktop — grid editor + round controls
+portal-mobile.html        # Attacker phone — tap-to-place palette
+broadcast.html            # Spectator orbit + leaderboard
 
-server.js                    # WS relay + round state + /api/realtime-token + admin clear
-public/textures/stickers/    # Hand-drawn sticker art (Gun, Sword, Ghost, ...)
-public/textures/             # Older Bird/Chair art + non-sticker items (Hammer, Snowman)
+server.js                 # WebSocket relay + round state + token mint + admin clear
+public/textures/stickers/ # Hand-drawn sticker art
+public/textures/          # Voice-trigger signs + non-sticker art
 ```
 
 ---
 
-## 🧪 Testing tips
+## 👥 Credits
 
-- **Always run `npx tsc --noEmit`** before claiming anything works. IWSDK bugs often manifest as silent init failures.
-- **IWER emulator** (`https://localhost:8081` on desktop) uses your webcam as passthrough. Move the fake head with WASD + mouse; trigger controllers with the toolbar.
-- **Voice**: run the server with `OPENAI_API_KEY` set, then grant mic permission on first SELECT press in VR.
-- **Multi-player**: open `/` on two headsets pointed at the same server — both show up on the portal leaderboard and in the broadcast view.
-
----
-
-## 👥 The team
+Made for the **Prototyping** class at **CCA (California College of the Arts)**, Spring 2026.
 
 - **Rae**
 - **Yoyo**
 - **Ted**
-
-Made for the **Prototyping** class at **CCA (California College of the Arts)**, Spring 2026.
 
 *Built with ❤️ on [IWSDK](https://iwsdk.dev).*

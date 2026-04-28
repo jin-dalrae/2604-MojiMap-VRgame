@@ -313,6 +313,10 @@ type SpawnedItem = {
   knockbackUntil: number;
   knockbackVx: number;
   knockbackVz: number;
+  // Bird-only — set true the moment a kill shot lands. tickBird checks
+  // this when transitioning to 'grounded' and drops a 🪶 feather pickup
+  // at the landing spot.
+  dropFeatherOnLand?: boolean;
 };
 
 export class PortalSystem extends createSystem({}) {
@@ -699,6 +703,19 @@ export class PortalSystem extends createSystem({}) {
       item.birdState = 'falling';
       this.score.value = this.score.peek() + BIRD_POINTS;
       this.goalsCollected.value = this.goalsCollected.peek(); // no change — birds aren't goals
+      // Visual + reward feedback — feather puff at the kill location,
+      // floating "+points" popup, comic-style "BIRD KO!" sign in front
+      // of the player, and a 🪶 feather pickup that drops where the
+      // bird lands so killing it gives the player a flight power-up.
+      const g = this.world.globals as Record<string, unknown>;
+      const p = item.object3D.position;
+      GameActions.featherPuffAt(g)?.(p.x, p.y, p.z);
+      GameActions.popupAt(g)?.(p.x, p.y + 0.4, p.z, `+${BIRD_POINTS}`, "#fde047");
+      GameActions.flashSign(g)?.({ text: "BIRD KO!", color: "#fb923c" });
+      // Stash the landing-drop coordinates on the item so tickBird can
+      // spawn the feather pickup the moment the bird grounds. Spawning
+      // it here would put it at the bird's flight altitude.
+      item.dropFeatherOnLand = true;
       return true;
     }
     return false;
@@ -1167,6 +1184,37 @@ export class PortalSystem extends createSystem({}) {
       birdState: 'flying',
       hitFlashUntil: 0,
       extra,
+      knockbackUntil: 0, knockbackVx: 0, knockbackVz: 0,
+    });
+  }
+
+  // Drop a 🪶 feather pickup at an arbitrary world position. Used by the
+  // bird-kill reward path — bypasses the grid-cell key scheme so the
+  // feather lands wherever the bird grounded, not on the nearest cell.
+  // Uses a synthetic key so handleCollisions / animateItems iterate it
+  // alongside the grid-spawned pickups.
+  private featherDropCounter = 0;
+  private spawnFeatherPickup(x: number, z: number) {
+    const g = this.world.globals as Record<string, unknown>;
+    const baseSize = 1.1 * currentEmojiScale(g) * STICKER_SIZE_FACTOR;
+    const sprite = makeTexturedSprite("/textures/stickers/Feather.png", baseSize);
+    const y = 0.55; // matches the height pickups bob around
+    sprite.position.set(x, y, z);
+    const entity = this.world.createTransformEntity(sprite);
+    const key = `__feather-drop-${++this.featherDropCounter}`;
+    this.spawnedEntities.set(key, {
+      entity,
+      object3D: sprite,
+      kind: 'sprite',
+      role: 'weapon-feather',
+      type: 'feather',
+      baseSize,
+      origin: [x, y, z],
+      hp: 0,
+      nextDamageableAt: 0,
+      heading: 0, radius: 0, omega: 0, phase: 0,
+      birdState: 'flying',
+      hitFlashUntil: 0,
       knockbackUntil: 0, knockbackVx: 0, knockbackVz: 0,
     });
   }
@@ -1657,6 +1705,13 @@ export class PortalSystem extends createSystem({}) {
         // Sprites are always camera-facing, but their image can be
         // rotated in-plane — PI = upside-down.
         mat.rotation = Math.PI;
+        // Reward drop — every downed bird leaves a 🪶 feather pickup
+        // right where it landed, giving the watergun a tangible
+        // strategic role beyond score-farming.
+        if (item.dropFeatherOnLand) {
+          item.dropFeatherOnLand = false;
+          this.spawnFeatherPickup(pos.x, pos.z);
+        }
       }
       return;
     }
