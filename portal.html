@@ -671,8 +671,8 @@
       </div>
       <label class="grid-scale-label" title="Shrinks the playable stage so it fits a Quest room boundary. Emoji/pickup sprites stay the same size.">
         Stage
-        <input type="range" id="grid-scale" min="0.4" max="2.0" step="0.05" value="1.0" />
-        <span id="grid-scale-value" class="grid-scale-value">0.80×</span>
+        <input type="range" id="grid-scale" min="0.4" max="2.0" step="0.05" value="1.2" />
+        <span id="grid-scale-value" class="grid-scale-value">1.20×</span>
       </label>
       <label class="grid-scale-label" title="Scales every emoji sprite AND its hitbox (pickup, sword, enemy touch, bird). Doesn't affect the stage.">
         Emoji
@@ -1435,14 +1435,8 @@
       }
 
       // ── Clear all ────────────────────────────────────────────
-      // Admin-gated — server verifies the password before actually
-      // clearing. We still optimistically clear the local view so the
-      // tap feels responsive; if the server rejects (ADMIN_ERROR), the
-      // next GRID_UPDATE/WELCOME will re-hydrate the state.
       document.getElementById('clear-btn').addEventListener('click', () => {
-        const pwd = prompt('Admin password to clear the grid:');
-        if (pwd === null || pwd === '') return;
-        wsSend({ type: 'GRID_CLEAR_ALL', pwd });
+        wsSend({ type: 'GRID_CLEAR_ALL' });
       });
 
       // ── Round timer ──────────────────────────────────────────

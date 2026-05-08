@@ -267,10 +267,10 @@ type AvatarRecord = {
 
 // ── System ───────────────────────────────────────────────────
 // Wall ("cube") items are rendered as real 3D geometry, not sprites,
-// so players can treat them as spatial obstacles. Tall enough to block
-// over-the-top shots but short enough to peek above if standing.
+// so players can treat them as spatial obstacles. Tall enough to fully
+// block sightlines + over-the-top shots — players can't peek over.
 const WALL_WIDTH  = 0.95;   // m — leaves a narrow gap between grid cells
-const WALL_HEIGHT = 1.0;    // ~waist height in real life
+const WALL_HEIGHT = 3.0;    // m — well above standing eye height
 const WALL_COLOR  = 0x3b82f6; // Tailwind blue-500 — matches the 🟦 emoji
 // Pre-round: walls are rendered as thin floor tiles so players can see
 // the layout but walk through them to reach the starting-point chair.

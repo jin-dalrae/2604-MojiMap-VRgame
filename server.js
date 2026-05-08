@@ -23,11 +23,6 @@ import { randomUUID } from 'crypto';
 
 const PORT = process.env.PORT || 3001;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-// Admin password required for destructive actions (currently just
-// GRID_CLEAR_ALL). Defaults to "admin" for local dev; set ADMIN_PWD in
-// the deployment env to use a real secret. Without this gate, anyone
-// with the URL could wipe the board mid-round.
-const ADMIN_PWD = process.env.ADMIN_PWD || 'admin';
 
 // ── Shared state ────────────────────────────────────────────
 const gridState = new Map(); // "r,c" -> { type, icon, label, role }
@@ -117,7 +112,7 @@ function hasChairElsewhere(excludeKey) {
 // same ranges the portal UI allows.
 //   gridScale  — playable stage footprint
 //   emojiScale — every sprite + hitbox
-let gridScale = 1.0;  // 1m per cell — 8×8 = 8m × 8m playable area
+let gridScale = 1.2;  // 1.2m per cell — 8×8 = 9.6m × 9.6m playable area
 let emojiScale = 1.0;
 const GRID_SCALE_MIN = 0.4;
 const GRID_SCALE_MAX = 2.0;
@@ -342,14 +337,7 @@ wss.on('connection', (ws) => {
         break;
 
       case 'GRID_CLEAR_ALL':
-        // Admin-only. Client sends the password entered via prompt();
-        // we only clear + broadcast if it matches.
-        if (msg.pwd !== ADMIN_PWD) {
-          console.log(`[admin] GRID_CLEAR_ALL rejected from ${short} (bad pwd)`);
-          ws.send(JSON.stringify({ type: 'ADMIN_ERROR', reason: 'bad-password' }));
-          break;
-        }
-        console.log(`[admin] GRID_CLEAR_ALL accepted from ${short}`);
+        console.log(`[grid] GRID_CLEAR_ALL from ${short}`);
         gridState.clear();
         broadcast({ type: 'GRID_CLEAR_ALL' });
         break;

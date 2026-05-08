@@ -865,3 +865,45 @@ make a full map randomly, but having only one chair at once. you can't spawn cha
 ```
 git commit and push
 ```
+
+## 2026-05-08T03:00:00Z
+
+```
+what was the pwd of clear?
+```
+
+## 2026-05-08T03:00:30Z
+
+```
+look up
+```
+
+## 2026-05-08T03:01:00Z
+
+```
+check git, is this the latest one on all branches?
+```
+
+## 2026-05-08T03:01:30Z
+
+```
+ok, can you save whatever is here to a branch called temp
+```
+
+## 2026-05-08T03:02:00Z
+
+```
+ok, pull the may 7th branch
+```
+
+## 2026-05-08T03:02:30Z
+
+```
+switch to that branch the may 7 one
+```
+
+## 2026-05-08T03:03:00Z
+
+```
+ok, great, can you get rid of teh password, and also make the wall height really tall, the brown and blue emojis), can you make the default map size 1.2x bigger
+```
