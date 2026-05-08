@@ -146,7 +146,7 @@ This is a multi-screen, asymmetric game. One headset is the player; everyone els
 | **Portal**         | `/portal`        | The host on a laptop. Drags emojis onto the grid, tunes sliders, runs the round timer. |
 | **Portal Mobile**  | `/portal-mobile` | Spectators on phones. Tap an emoji to drop an attack on a chosen cell (or a random one). |
 | **Broadcast**      | `/broadcast`     | Read-only orbit camera + live leaderboard. Point this at a TV or projector.           |
-| **Server**         | `:3001` (Node)   | Authoritative state — grid, timer, presence, voice token mint, admin password.        |
+| **Server**         | `:3001` (Node)   | Authoritative state — grid, timer, presence, voice token mint.                        |
 
 All clients talk to the server over a single WebSocket. Each connection declares its role on open; only `vr` connections become "user characters" you see in the world.
 
@@ -161,7 +161,6 @@ npm install
 
 # terminal 1 — state server
 export OPENAI_API_KEY="sk-..."   # optional, only needed for voice triggers
-export ADMIN_PWD="changeme"      # optional, only needed for the portal Clear button
 node server.js
 
 # terminal 2 — Vite dev server (HTTPS, HMR)

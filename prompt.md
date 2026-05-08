@@ -907,3 +907,9 @@ switch to that branch the may 7 one
 ```
 ok, great, can you get rid of teh password, and also make the wall height really tall, the brown and blue emojis), can you make the default map size 1.2x bigger
 ```
+
+## 2026-05-08T03:19:19Z
+
+```
+ok, now i want you to get rid of the password to reset the map, i want you to make the default map size 1.2x bigger, (including what you can scale on the slider) and i want you to make the walls really high. after this, push to main, the live website, railway etc
+```
