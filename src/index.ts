@@ -40,6 +40,7 @@ import { HUDSystem } from "./hud-system.js";
 import { ProjectileSystem } from "./projectile-system.js";
 import { BombSystem } from "./bomb-system.js";
 import { VoiceSystem } from "./voice-system.js";
+import { SignSystem } from "./sign-system.js";
 import { GameState, getPlayerStats, type PlayerStat } from "./game-state.js";
 
 const isSpectator = location.pathname.includes("broadcast");
@@ -91,8 +92,11 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   }
 
   // Same registration order on both pages — VR-only systems gated
-  // explicitly so the rest stays in lockstep.
+  // explicitly so the rest stays in lockstep. SignSystem registers
+  // before BombSystem so its action setters are live when BombSystem
+  // (and the bird-kill path in PortalSystem) try to call them.
   world
+    .registerSystem(SignSystem)
     .registerSystem(PortalSystem)
     .registerSystem(SyncSystem)
     .registerSystem(WeaponSystem)

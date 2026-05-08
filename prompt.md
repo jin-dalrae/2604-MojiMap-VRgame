@@ -1,5 +1,53 @@
 # Prompt Log
 
+## 2026-04-28T19:59:57Z
+
+```
+[Image #5] add some more cute image components in the game!  (image source: /Users/dalrae/Downloads/poopoo_sign_when_voice.jpeg)
+```
+
+## 2026-04-28T20:01:00Z
+
+```
+did you put the images as guided with the image names?
+```
+
+## 2026-04-28T20:10:00Z
+
+```
+birds should be flying after game starts.
+```
+
+## 2026-04-28T20:20:00Z
+
+```
+you can shoot the birds with the watergun.
+```
+
+## 2026-04-28T20:30:00Z
+
+```
+git commit and push
+```
+
+## 2026-04-28T20:35:00Z
+
+```
+what do you think we can add more? is the small boundary of moving is resolved?
+```
+
+## 2026-04-28T20:42:00Z
+
+```
+let's do them all. and update the readme reading like the game manual.
+```
+
+## 2026-04-28T20:55:00Z
+
+```
+git commit push
+```
+
 ## 2026-04-14T00:00:00Z
 
 ```
@@ -816,4 +864,46 @@ make a full map randomly, but having only one chair at once. you can't spawn cha
 
 ```
 git commit and push
+```
+
+## 2026-05-08T03:00:00Z
+
+```
+what was the pwd of clear?
+```
+
+## 2026-05-08T03:00:30Z
+
+```
+look up
+```
+
+## 2026-05-08T03:01:00Z
+
+```
+check git, is this the latest one on all branches?
+```
+
+## 2026-05-08T03:01:30Z
+
+```
+ok, can you save whatever is here to a branch called temp
+```
+
+## 2026-05-08T03:02:00Z
+
+```
+ok, pull the may 7th branch
+```
+
+## 2026-05-08T03:02:30Z
+
+```
+switch to that branch the may 7 one
+```
+
+## 2026-05-08T03:03:00Z
+
+```
+ok, great, can you get rid of teh password, and also make the wall height really tall, the brown and blue emojis), can you make the default map size 1.2x bigger
 ```

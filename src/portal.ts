@@ -197,7 +197,14 @@ const ITEM_TEXTURES: Record<string, string> = {
   // the original art set alongside Bird/Chair.
   snowman:      "/textures/Snowman.png",
   hammer:       "/textures/Hammer.png",
+  banana:       "/textures/Banana.png",
 };
+
+// Mushroom has two art variants — each placement picks one at random.
+const MUSHROOM_TEXTURES = [
+  "/textures/Mushroom_1.png",
+  "/textures/Mushroom_2.png",
+];
 
 // Sticker PNGs have thicker outlines and read large on a 1.1m billboard
 // — shrink them so they don't crowd adjacent cells. Emoji canvas sprites
@@ -260,10 +267,10 @@ type AvatarRecord = {
 
 // ── System ───────────────────────────────────────────────────
 // Wall ("cube") items are rendered as real 3D geometry, not sprites,
-// so players can treat them as spatial obstacles. Tall enough to block
-// over-the-top shots but short enough to peek above if standing.
+// so players can treat them as spatial obstacles. Tall enough to fully
+// block sightlines + over-the-top shots — players can't peek over.
 const WALL_WIDTH  = 0.95;   // m — leaves a narrow gap between grid cells
-const WALL_HEIGHT = 1.0;    // ~waist height in real life
+const WALL_HEIGHT = 3.0;    // m — well above standing eye height
 const WALL_COLOR  = 0x3b82f6; // Tailwind blue-500 — matches the 🟦 emoji
 // Pre-round: walls are rendered as thin floor tiles so players can see
 // the layout but walk through them to reach the starting-point chair.
@@ -313,6 +320,10 @@ type SpawnedItem = {
   knockbackUntil: number;
   knockbackVx: number;
   knockbackVz: number;
+  // Bird-only — set true the moment a kill shot lands. tickBird checks
+  // this when transitioning to 'grounded' and drops a 🪶 feather pickup
+  // at the landing spot.
+  dropFeatherOnLand?: boolean;
 };
 
 export class PortalSystem extends createSystem({}) {
@@ -471,7 +482,7 @@ export class PortalSystem extends createSystem({}) {
     const baseline = 1.1;
     for (const item of this.spawnedEntities.values()) {
       if (item.kind !== 'sprite') continue;
-      let mul = ITEM_TEXTURES[item.type] ? STICKER_SIZE_FACTOR : 1;
+      let mul = (ITEM_TEXTURES[item.type] || item.type === 'mushroom') ? STICKER_SIZE_FACTOR : 1;
       if (item.type === 'chair') mul *= CHAIR_SIZE_MULT;
       if (item.type === 'ghost') mul *= GHOST_SIZE_MULT;
       if (item.type === 'bird')  mul *= BIRD_SIZE_MULT;
@@ -699,6 +710,19 @@ export class PortalSystem extends createSystem({}) {
       item.birdState = 'falling';
       this.score.value = this.score.peek() + BIRD_POINTS;
       this.goalsCollected.value = this.goalsCollected.peek(); // no change — birds aren't goals
+      // Visual + reward feedback — feather puff at the kill location,
+      // floating "+points" popup, comic-style "BIRD KO!" sign in front
+      // of the player, and a 🪶 feather pickup that drops where the
+      // bird lands so killing it gives the player a flight power-up.
+      const g = this.world.globals as Record<string, unknown>;
+      const p = item.object3D.position;
+      GameActions.featherPuffAt(g)?.(p.x, p.y, p.z);
+      GameActions.popupAt(g)?.(p.x, p.y + 0.4, p.z, `+${BIRD_POINTS}`, "#fde047");
+      GameActions.flashSign(g)?.({ text: "BIRD KO!", color: "#fb923c" });
+      // Stash the landing-drop coordinates on the item so tickBird can
+      // spawn the feather pickup the moment the bird grounds. Spawning
+      // it here would put it at the bird's flight altitude.
+      item.dropFeatherOnLand = true;
       return true;
     }
     return false;
@@ -1043,7 +1067,10 @@ export class PortalSystem extends createSystem({}) {
     // baseSize, so we scale down to match the emoji visual weight.
     // Chair (spawn point) gets an extra bump so it reads as a waypoint.
     // Birds fly high so they need to appear bigger to stay visible.
-    const texturedUrl = ITEM_TEXTURES[type];
+    // Mushroom picks a random art variant each time it's placed.
+    const texturedUrl = type === 'mushroom'
+      ? MUSHROOM_TEXTURES[Math.floor(Math.random() * MUSHROOM_TEXTURES.length)]
+      : ITEM_TEXTURES[type];
     let sizeMul = texturedUrl ? STICKER_SIZE_FACTOR : 1;
     if (type === 'chair') sizeMul *= CHAIR_SIZE_MULT;
     if (type === 'ghost') sizeMul *= GHOST_SIZE_MULT;
@@ -1171,6 +1198,37 @@ export class PortalSystem extends createSystem({}) {
     });
   }
 
+  // Drop a 🪶 feather pickup at an arbitrary world position. Used by the
+  // bird-kill reward path — bypasses the grid-cell key scheme so the
+  // feather lands wherever the bird grounded, not on the nearest cell.
+  // Uses a synthetic key so handleCollisions / animateItems iterate it
+  // alongside the grid-spawned pickups.
+  private featherDropCounter = 0;
+  private spawnFeatherPickup(x: number, z: number) {
+    const g = this.world.globals as Record<string, unknown>;
+    const baseSize = 1.1 * currentEmojiScale(g) * STICKER_SIZE_FACTOR;
+    const sprite = makeTexturedSprite("/textures/stickers/Feather.png", baseSize);
+    const y = 0.55; // matches the height pickups bob around
+    sprite.position.set(x, y, z);
+    const entity = this.world.createTransformEntity(sprite);
+    const key = `__feather-drop-${++this.featherDropCounter}`;
+    this.spawnedEntities.set(key, {
+      entity,
+      object3D: sprite,
+      kind: 'sprite',
+      role: 'weapon-feather',
+      type: 'feather',
+      baseSize,
+      origin: [x, y, z],
+      hp: 0,
+      nextDamageableAt: 0,
+      heading: 0, radius: 0, omega: 0, phase: 0,
+      birdState: 'flying',
+      hitFlashUntil: 0,
+      knockbackUntil: 0, knockbackVx: 0, knockbackVz: 0,
+    });
+  }
+
   private despawnItem(key: string) {
     const record = this.spawnedEntities.get(key);
     if (!record) return;
@@ -1214,8 +1272,12 @@ export class PortalSystem extends createSystem({}) {
       if (!roundRunning) {
         // Snap to neutral state so the idle view stays calm. Restore
         // origin so enemies that wandered during chase return home.
+        // EXCEPT birds — they're always airborne and animate themselves
+        // via tickBirds(), so leave their position alone.
         s.scale.set(item.baseSize, item.baseSize, 1);
-        s.position.set(item.origin[0], item.origin[1], item.origin[2]);
+        if (item.role !== 'bird') {
+          s.position.set(item.origin[0], item.origin[1], item.origin[2]);
+        }
         mat.opacity = 1;
         continue;
       }
@@ -1331,7 +1393,9 @@ export class PortalSystem extends createSystem({}) {
   // called every frame (no-op when the chain is empty, so it costs
   // nothing for players who never pick up a 'shroom).
   private addMushroomFollower() {
-    const sprite = makeEmojiSprite('🍄', 'powerup', 0.6);
+    // Pick a random mushroom art variant for the follower sprite.
+    const url = MUSHROOM_TEXTURES[Math.floor(Math.random() * MUSHROOM_TEXTURES.length)];
+    const sprite = makeTexturedSprite(url, 0.6 * STICKER_SIZE_FACTOR);
     this.scene.add(sprite);
     // The newest mushroom lands at the LAST position of the chain — so
     // picking up a second mushroom places it behind the first, etc.
@@ -1537,12 +1601,9 @@ export class PortalSystem extends createSystem({}) {
 
     const nowMs = performance.now();
     for (const item of this.spawnedEntities.values()) {
-      // Birds have their own AI track — handled separately since they
-      // fly, fall, and land rather than chasing/wandering like enemies.
-      if (item.role === 'bird') {
-        this.tickBird(item, deltaSeconds, time);
-        continue;
-      }
+      // Birds are ticked unconditionally in update() — skip them here
+      // so they don't double-tick during rounds.
+      if (item.role === 'bird') continue;
       if (item.role !== 'enemy') continue;
       const pos = item.object3D.position;
 
@@ -1617,6 +1678,15 @@ export class PortalSystem extends createSystem({}) {
     }
   }
 
+  // Iterate every spawned bird and run its tickBird state machine.
+  // Called every frame (round or no round) so birds are always airborne.
+  private tickBirds(deltaSeconds: number, time: number) {
+    for (const item of this.spawnedEntities.values()) {
+      if (item.role !== 'bird') continue;
+      this.tickBird(item, deltaSeconds, time);
+    }
+  }
+
   // Bird AI — three states.
   //  - flying: erratic wandering in the air, ignoring walls and edges.
   //  - falling: straight down at BIRD_FALL_SPEED until it hits the floor.
@@ -1647,6 +1717,13 @@ export class PortalSystem extends createSystem({}) {
         // Sprites are always camera-facing, but their image can be
         // rotated in-plane — PI = upside-down.
         mat.rotation = Math.PI;
+        // Reward drop — every downed bird leaves a 🪶 feather pickup
+        // right where it landed, giving the watergun a tangible
+        // strategic role beyond score-farming.
+        if (item.dropFeatherOnLand) {
+          item.dropFeatherOnLand = false;
+          this.spawnFeatherPickup(pos.x, pos.z);
+        }
       }
       return;
     }
@@ -2047,6 +2124,10 @@ export class PortalSystem extends createSystem({}) {
     const time = performance.now() / 1000;
     const roundRunning = this.roundRunning.peek();
     this.animateItems(time, roundRunning);
+
+    // Birds fly continuously — round or no round. They're scenery as much
+    // as gameplay, and a frozen eagle stuck on the floor breaks the vibe.
+    this.tickBirds(delta, time);
 
     // Gameplay interactions only fire while the round is live. Gives the
     // planner time to place items before the contestant can grab them.

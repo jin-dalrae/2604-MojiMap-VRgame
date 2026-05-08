@@ -705,12 +705,8 @@
         else             wsSend({ type: 'ROUND_REQUEST', duration: 30 });
       };
 
-      // Admin-gated clear. Server verifies ADMIN_PWD env var ("admin"
-      // locally unless overridden); if wrong it replies ADMIN_ERROR.
       document.getElementById('clear-btn').onclick = () => {
-        const pwd = prompt('Admin password to clear the grid:');
-        if (pwd === null || pwd === '') return;
-        wsSend({ type: 'GRID_CLEAR_ALL', pwd });
+        wsSend({ type: 'GRID_CLEAR_ALL' });
       };
 
       connectWS();

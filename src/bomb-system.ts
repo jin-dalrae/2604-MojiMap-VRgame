@@ -46,6 +46,9 @@ type Bomb = {
   exploded: boolean;           // kill path runs once
 };
 
+// POOPOO DOODOO sign image lives at this URL; SignSystem renders it.
+const POOPOO_SIGN_URL = "/textures/poopoo_sign_when_voice.jpeg";
+
 function makePoopSprite(size = 0.45): Sprite {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 128;
@@ -184,6 +187,11 @@ export class BombSystem extends createSystem({}) {
     };
     this.bombs.push(bomb);
     FX.bombThrow(this.input.gamepads.right ?? this.input.gamepads.left);
+    // Comic sign confirmation — SignSystem owns the visual.
+    GameActions.flashSign(this.world.globals as Record<string, unknown>)?.({
+      url: POOPOO_SIGN_URL,
+      aspect: 2,
+    });
   }
 
   update(delta: number) {
