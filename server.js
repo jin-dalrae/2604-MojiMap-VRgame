@@ -112,10 +112,10 @@ function hasChairElsewhere(excludeKey) {
 // same ranges the portal UI allows.
 //   gridScale  — playable stage footprint
 //   emojiScale — every sprite + hitbox
-let gridScale = 1.2;  // 1.2m per cell — 8×8 = 9.6m × 9.6m playable area
+let gridScale = 1.44; // 1.44m per cell — 8×8 = 11.52m × 11.52m playable area (1.2× the previous 9.6m default)
 let emojiScale = 1.0;
-const GRID_SCALE_MIN = 0.4;
-const GRID_SCALE_MAX = 2.0;
+const GRID_SCALE_MIN = 0.48;
+const GRID_SCALE_MAX = 2.4;
 const EMOJI_SCALE_MIN = 0.4;
 const EMOJI_SCALE_MAX = 2.0;
 

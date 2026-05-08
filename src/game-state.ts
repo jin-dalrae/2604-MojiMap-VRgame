@@ -150,12 +150,11 @@ export const CHAIR_READY_RADIUS = 0.9; // meters — close enough to the chair
 // 1.0m per cell × 8×8 = 8m × 8m playable area. Big enough that a player
 // with full physical walking (no locomotion) can actually dodge an
 // approaching enemy before it closes the gap.
-export const GRID_SCALE_DEFAULT = 1.0;
-export const GRID_SCALE_MIN = 0.4;
-// 2.0 → 8×2.0 = 16m board. Large enough to match a full-room guardian
-// without the cell-per-meter feel getting too cramped. Was 1.2 (9.6m)
-// which capped out quickly for designers wanting a bigger play area.
-export const GRID_SCALE_MAX = 2.0;
+export const GRID_SCALE_DEFAULT = 1.44; // 1.2× bumped from 1.2m default
+export const GRID_SCALE_MIN = 0.48;
+// 2.4 → 8×2.4 = 19.2m board. 1.2× wider than the previous 16m cap so
+// designers wanting a really big play area still have headroom.
+export const GRID_SCALE_MAX = 2.4;
 
 // Emoji scale — grows/shrinks every sprite (pickups, enemies, eagles,
 // chair face) AND their hitboxes together. Lets the operator tune how
