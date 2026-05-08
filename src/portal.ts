@@ -197,7 +197,14 @@ const ITEM_TEXTURES: Record<string, string> = {
   // the original art set alongside Bird/Chair.
   snowman:      "/textures/Snowman.png",
   hammer:       "/textures/Hammer.png",
+  banana:       "/textures/Banana.png",
 };
+
+// Mushroom has two art variants — each placement picks one at random.
+const MUSHROOM_TEXTURES = [
+  "/textures/Mushroom_1.png",
+  "/textures/Mushroom_2.png",
+];
 
 // Sticker PNGs have thicker outlines and read large on a 1.1m billboard
 // — shrink them so they don't crowd adjacent cells. Emoji canvas sprites
@@ -475,7 +482,7 @@ export class PortalSystem extends createSystem({}) {
     const baseline = 1.1;
     for (const item of this.spawnedEntities.values()) {
       if (item.kind !== 'sprite') continue;
-      let mul = ITEM_TEXTURES[item.type] ? STICKER_SIZE_FACTOR : 1;
+      let mul = (ITEM_TEXTURES[item.type] || item.type === 'mushroom') ? STICKER_SIZE_FACTOR : 1;
       if (item.type === 'chair') mul *= CHAIR_SIZE_MULT;
       if (item.type === 'ghost') mul *= GHOST_SIZE_MULT;
       if (item.type === 'bird')  mul *= BIRD_SIZE_MULT;
@@ -1060,7 +1067,10 @@ export class PortalSystem extends createSystem({}) {
     // baseSize, so we scale down to match the emoji visual weight.
     // Chair (spawn point) gets an extra bump so it reads as a waypoint.
     // Birds fly high so they need to appear bigger to stay visible.
-    const texturedUrl = ITEM_TEXTURES[type];
+    // Mushroom picks a random art variant each time it's placed.
+    const texturedUrl = type === 'mushroom'
+      ? MUSHROOM_TEXTURES[Math.floor(Math.random() * MUSHROOM_TEXTURES.length)]
+      : ITEM_TEXTURES[type];
     let sizeMul = texturedUrl ? STICKER_SIZE_FACTOR : 1;
     if (type === 'chair') sizeMul *= CHAIR_SIZE_MULT;
     if (type === 'ghost') sizeMul *= GHOST_SIZE_MULT;
@@ -1383,7 +1393,9 @@ export class PortalSystem extends createSystem({}) {
   // called every frame (no-op when the chain is empty, so it costs
   // nothing for players who never pick up a 'shroom).
   private addMushroomFollower() {
-    const sprite = makeEmojiSprite('🍄', 'powerup', 0.6);
+    // Pick a random mushroom art variant for the follower sprite.
+    const url = MUSHROOM_TEXTURES[Math.floor(Math.random() * MUSHROOM_TEXTURES.length)];
+    const sprite = makeTexturedSprite(url, 0.6 * STICKER_SIZE_FACTOR);
     this.scene.add(sprite);
     // The newest mushroom lands at the LAST position of the chain — so
     // picking up a second mushroom places it behind the first, etc.
