@@ -516,15 +516,49 @@
         background: var(--accent-dim);
         border-color: var(--accent);
       }
-      .item-icon { font-size: 18px; line-height: 1; }
+      .item-icon {
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        line-height: 1;
+      }
+      .item-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      .cell-art {
+        width: 86%;
+        height: 86%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+      .cell-art img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
       /* Per-species size tweaks. Applied to both the palette button and
          the grid cell so the sizing stays consistent in each view. */
       .item[data-type="bird"] .item-icon,
-      .cell[data-type="bird"] > span { font-size: 1.05em; }
+      .cell[data-type="bird"] .cell-art,
       .item[data-type="ghost"] .item-icon,
-      .cell[data-type="ghost"] > span,
+      .cell[data-type="ghost"] .cell-art,
       .item[data-type="chair"] .item-icon,
-      .cell[data-type="chair"] > span { font-size: 1.1em; }
+      .cell[data-type="chair"] .cell-art,
+      .item[data-type="banana"] .item-icon,
+      .cell[data-type="banana"] .cell-art,
+      .item[data-type="mushroom"] .item-icon,
+      .cell[data-type="mushroom"] .cell-art {
+        transform: scale(1.1);
+      }
       .item-label { font-size: 8px; color: var(--muted); white-space: nowrap; }
       .item.selected .item-label { color: #a5b4fc; }
 
@@ -814,9 +848,43 @@
       };
       function roleFor(icon) { return ROLE_BY_ICON[icon] || 'decor'; }
 
+      const STICKERS = {
+        sword:        '/textures/stickers/Sword.png',
+        gun:          '/textures/stickers/Gun.png',
+        poopoodoodoo: '/textures/stickers/Poo.png',
+        feather:      '/textures/stickers/Feather.png',
+        star:         '/textures/stickers/Star.png',
+        fire:         '/textures/stickers/Fire.png',
+        robot:        '/textures/stickers/Robot.png',
+        ghost:        '/textures/stickers/Ghost.png',
+        skull:        '/textures/stickers/Skull.png',
+        bird:         '/textures/Bird.png',
+        chair:        '/textures/Chair.png',
+        snowman:      '/textures/Snowman.png',
+        hammer:       '/textures/Hammer.png',
+        banana:       '/textures/Banana.png',
+        mushroom:     '/textures/Mushroom_1.png',
+      };
+
+      function renderIcon(target, type, icon) {
+        target.textContent = '';
+        const url = STICKERS[type];
+        if (url) {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = icon;
+          img.draggable = false;
+          target.appendChild(img);
+        } else {
+          target.textContent = icon;
+        }
+      }
+
       // Stamp role on each palette item's DOM so CSS tinting works.
       document.querySelectorAll('.item[data-icon]').forEach(el => {
         el.dataset.role = roleFor(el.dataset.icon);
+        const iconEl = el.querySelector('.item-icon');
+        if (iconEl) renderIcon(iconEl, el.dataset.type, el.dataset.icon);
       });
 
       // ── WebSocket sync ───────────────────────────────────────
@@ -1293,7 +1361,8 @@
               if (item.role) cell.dataset.role = item.role;
               cell.dataset.type = item.type;           // lets CSS target per-species
               const icon = document.createElement('span');
-              icon.textContent = item.icon;
+              icon.className = 'cell-art';
+              renderIcon(icon, item.type, item.icon);
               icon.title = item.label;
               const x = document.createElement('div');
               x.className = 'remove-x';

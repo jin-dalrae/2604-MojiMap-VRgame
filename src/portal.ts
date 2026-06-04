@@ -206,10 +206,10 @@ const MUSHROOM_TEXTURES = [
   "/textures/Mushroom_2.png",
 ];
 
-// Sticker PNGs have thicker outlines and read large on a 1.1m billboard
-// — shrink them so they don't crowd adjacent cells. Emoji canvas sprites
-// stay at full size; walls/wood are 3D meshes and ignore this.
-const STICKER_SIZE_FACTOR = 0.702;
+// Textured PNGs read cleaner when they are close to the emoji baseline.
+// Keep a modest shrink so outlines don't crowd neighboring cells, but
+// avoid making pickups/enemies look tiny in headset view.
+const STICKER_SIZE_FACTOR = 0.86;
 // Chair is the spawn waypoint — 10% larger than regular stickers so it
 // reads as a "walk here to ready up" target.
 const CHAIR_SIZE_MULT = 1.1;
@@ -218,6 +218,7 @@ const GHOST_SIZE_MULT = 1.1;
 // Birds fly at BIRD_FLIGHT_HEIGHT (5.7m) — they look tiny from ground
 // level unless bumped up.
 const BIRD_SIZE_MULT = 1.3;
+const PLAYER_AVATAR_HEIGHT = 1.65;
 const sharedTextureLoader = new TextureLoader();
 // `aspect` = width / height. Default 1 keeps the old square behavior;
 // pass the real image aspect to avoid stretching tall art.
@@ -974,14 +975,13 @@ export class PortalSystem extends createSystem({}) {
     // so the old color-coded cylinder/sphere combo is gone. Aspect ratio
     // is preserved so the figure doesn't get squashed wide.
     const PERSON_ASPECT = 245 / 358;                  // matches Person.png
-    const PERSON_HEIGHT = 1.65;                       // 10% taller baseline
     const face = makeTexturedSprite(
       "/textures/stickers/Person.png",
-      PERSON_HEIGHT,
+      PLAYER_AVATAR_HEIGHT,
       PERSON_ASPECT,
     );
     addMat(face.material as SpriteMaterial);          // fades on death
-    face.position.y = PERSON_HEIGHT / 2;              // feet on the floor
+    face.position.y = PLAYER_AVATAR_HEIGHT / 2;       // feet on the floor
     root.add(face);
 
     // Facing cone — per-user color gives each player an identifiable
@@ -1037,7 +1037,9 @@ export class PortalSystem extends createSystem({}) {
     }
     this.setAvatarDead(av, dead);
     av.root.position.x = pos.x;
-    if (typeof pos.y === 'number') av.root.position.y = pos.y;
+    if (typeof pos.y === 'number') {
+      av.root.position.y = Math.max(0, pos.y - PLAYER_AVATAR_HEIGHT);
+    }
     av.root.position.z = pos.z;
     if (typeof pos.heading === 'number') {
       av.root.rotation.y = pos.heading;

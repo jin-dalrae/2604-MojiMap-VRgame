@@ -36,10 +36,10 @@ Defined in `vercel.json`. Current rewrites:
 
 | URL | File |
 |-----|------|
+| `/play` | `play.html` |
 | `/portal` | `portal.html` |
 | `/portal-mobile` | `portal-mobile.html` |
 | `/broadcast` | `broadcast.html` |
-| `/puppet` | `puppet.html` |
 
 To add a new route, add an entry to the `rewrites` array in `vercel.json` and redeploy.
 
