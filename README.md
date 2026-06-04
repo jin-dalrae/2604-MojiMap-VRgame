@@ -142,7 +142,8 @@ This is a multi-screen, asymmetric game. One headset is the player; everyone els
 
 | Screen             | URL              | Who's on it                                                                          |
 | ------------------ | ---------------- | ------------------------------------------------------------------------------------ |
-| **VR**             | `/`              | The contestant in the Quest. The whole game-feel lives here.                          |
+| **Landing**        | `/`              | Role picker. Use **Enter VR** to open the actual headset scene.                       |
+| **VR**             | `/play.html`     | The contestant in the Quest. The whole game-feel lives here.                          |
 | **Portal**         | `/portal`        | The host on a laptop. Drags emojis onto the grid, tunes sliders, runs the round timer. |
 | **Portal Mobile**  | `/portal-mobile` | Spectators on phones. Tap an emoji to drop an attack on a chosen cell (or a random one). |
 | **Broadcast**      | `/broadcast`     | Read-only orbit camera + live leaderboard. Point this at a TV or projector.           |
@@ -162,7 +163,7 @@ npm install
 # terminal 1 — state server
 export OPENAI_API_KEY="sk-..."   # optional, only needed for voice triggers
 export ADMIN_PWD="changeme"      # optional, only needed for the portal Clear button
-node server.js
+npm run server
 
 # terminal 2 — Vite dev server (HTTPS, HMR)
 npm run dev
@@ -170,12 +171,23 @@ npm run dev
 
 Then open:
 
-- **VR**         → `https://<your-ip>:8081/`
+- **Landing**    → `https://<your-ip>:8081/`
+- **VR**         → `https://<your-ip>:8081/play.html`
 - **Portal**     → `https://<your-ip>:8081/portal.html`
 - **Mobile**     → `https://<your-ip>:8081/portal-mobile.html`
 - **Broadcast**  → `https://<your-ip>:8081/broadcast.html`
 
+> **Important:** Vite alone only serves the pages. Portal placements, broadcast players, round state, and voice token requests require the `npm run server` process on port `3001`. If you place things in the portal and they do not appear in XR/broadcast, first check that terminal 1 says `Grid Sync Server` and the portal shows `Live sync`.
+
 The Quest needs HTTPS. Generate a self-signed cert under `.certs/` (Vite picks it up automatically) or tunnel with `ngrok` / `cloudflared`.
+
+### Art sizing notes
+
+- Item art lives in `public/textures/` and `public/textures/stickers/`.
+- The XR scene maps placeable item types to PNG billboards in `src/portal.ts` (`ITEM_TEXTURES`, `MUSHROOM_TEXTURES`).
+- Desktop and mobile portals use the same sticker paths so the planner preview matches XR. `cube` and `wood` intentionally stay as emoji/block glyphs because they become 3D wall meshes in XR.
+- Most item PNGs are `1000×1000`; small-looking items are usually a CSS/sprite-scale issue, not a source-image resolution issue.
+- Broadcast/player avatars use `public/textures/stickers/Person.png`; its feet are grounded by deriving avatar foot height from the headset/head position.
 
 ### Deploying
 
@@ -188,7 +200,9 @@ The Quest needs HTTPS. Generate a self-signed cert under `.certs/` (Vite picks i
 ## 🧪 Testing tips
 
 - **Always type-check first**: `npx tsc --noEmit`. IWSDK init failures often look silent at runtime.
+- **Run both local servers**: `npm run server` and `npm run dev`. Without the `3001` server, portal placements and broadcast presence will not sync.
 - **IWER emulator** lets you "play" without a headset on `https://localhost:8081`. WASD + mouse moves the fake head; the toolbar fires controllers.
+- **Broadcast players appear after position starts publishing**: open `/play.html`, enter XR or keep the browser game tab active, and confirm the server logs `joined as VR user`.
 - **Voice**: run the server with `OPENAI_API_KEY` set, grant mic permission on first interaction, then chant.
 - **Multi-player**: open `/` on two headsets pointed at the same server. Both will show up on the portal leaderboard and broadcast view.
 - **Stuck in a small circle?** Quest is using the seated/stationary reference space. Reset to room-scale guardian and re-enter VR.
