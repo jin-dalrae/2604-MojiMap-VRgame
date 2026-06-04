@@ -162,9 +162,11 @@
       }
       /* Per-species size tweaks — applied to both grid cells and palette
          icons via the sticker-<type> class set by iconHtml(). */
-      .sticker-bird  { transform: scale(1.05); }
-      .sticker-ghost { transform: scale(1.10); }
-      .sticker-chair { transform: scale(1.10); }
+      .sticker-bird,
+      .sticker-chair,
+      .sticker-ghost,
+      .sticker-banana,
+      .sticker-mushroom { transform: scale(1.10); }
 
       /* Player dots live above the 8×8 data area only — inset matches
          the grid's header label strip so 0–100% maps to the data area. */
@@ -366,6 +368,8 @@
         // original art files that still live in /textures/.
         snowman:      '/textures/Snowman.png',
         hammer:       '/textures/Hammer.png',
+        banana:       '/textures/Banana.png',
+        mushroom:     '/textures/Mushroom_1.png',
       };
       const ITEMS = [
         { type: 'sword',        icon: '🗡️', label: 'Sword',   role: 'weapon-sword'    },
