@@ -1,0 +1,16 @@
+# Keep the Railway upload tiny — the Docker build only needs server.js
+# and the package manifests (see .dockerignore / Dockerfile). Everything
+# else is frontend, art, or local tooling that Vercel serves instead.
+node_modules
+dist
+.certs
+.git
+public
+src
+ui
+metaspatial
+devlog
+docs
+*.html
+chat-history.txt
+prompt.md
