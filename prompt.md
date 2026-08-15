@@ -955,3 +955,15 @@ the iphone app looks the same. it looks fucked up, its not keeping the map in th
 ```
 make the map wider than it is tall, 8 x 12. also, i cannot use the joysticks in the ar mode to move around teh map. the joysticks are disabled.
 ```
+
+## 2026-08-15T02:50:00Z
+
+```
+fucking push, asap
+```
+
+## 2026-08-15T02:51:00Z
+
+```
+make the walls as high as they used to be (like when we were pushing a lot)
+```
