@@ -114,6 +114,9 @@ function hasChairElsewhere(excludeKey) {
 //   emojiScale — every sprite + hitbox
 let gridScale = 1.44; // 1.44m per cell — 8×8 = 11.52m × 11.52m playable area (1.2× the previous 9.6m default)
 let emojiScale = 1.0;
+// Move-map mode — when on, VR clients let the thumbsticks slide the
+// map relative to the physical room. Toggled from the mobile portal.
+let moveMapEnabled = false;
 const GRID_SCALE_MIN = 0.48;
 const GRID_SCALE_MAX = 2.4;
 const EMOJI_SCALE_MIN = 0.4;
@@ -289,6 +292,7 @@ wss.on('connection', (ws) => {
     pendingRound: round.pending ? { duration: round.pendingDuration } : null,
     gridScale,
     emojiScale,
+    moveMapEnabled,
   }));
 
   ws.on('message', (raw) => {
@@ -366,6 +370,13 @@ wss.on('connection', (ws) => {
         emojiScale = Math.max(EMOJI_SCALE_MIN, Math.min(EMOJI_SCALE_MAX, s));
         console.log(`[emoji] scale set to ${emojiScale.toFixed(2)}`);
         broadcast({ type: 'SET_EMOJI_SCALE', scale: emojiScale });
+        break;
+      }
+
+      case 'SET_MOVE_MAP': {
+        moveMapEnabled = !!msg.on;
+        console.log(`[map] move-map mode ${moveMapEnabled ? 'ON' : 'OFF'}`);
+        broadcast({ type: 'SET_MOVE_MAP', on: moveMapEnabled });
         break;
       }
 

@@ -317,6 +317,7 @@
       <h1>MojiMap · Attack</h1>
       <div class="timer-display" id="timer-display">— : —</div>
       <div class="header-actions">
+        <button class="btn btn-ghost" id="move-map-btn" title="Move Map — when ON, the VR player's thumbsticks slide the whole map around their room">🕹️</button>
         <button class="btn btn-ghost" id="random-btn" title="Random drop — when ON, tapping a palette emoji places it in a random empty cell">🎲</button>
         <button class="btn btn-ghost" id="clear-btn">Clear</button>
         <button class="btn btn-primary" id="start-round-btn">Start</button>
@@ -421,7 +422,9 @@
             state.clear();
             Object.entries(msg.grid).forEach(([k, v]) => state.set(k, v));
             syncGrid();
+            setMoveMapUI(!!msg.moveMapEnabled);
           } else if (msg.type === 'GRID_UPDATE')    { state.set(msg.key, msg.item); syncGrid(); }
+            else if (msg.type === 'SET_MOVE_MAP')   { setMoveMapUI(!!msg.on); }
             else if (msg.type === 'GRID_CLEAR')     { state.delete(msg.key);        syncGrid(); }
             else if (msg.type === 'GRID_CLEAR_ALL') { state.clear();                syncGrid(); }
             else if (msg.type === 'PLAYER_POSITION'){ updatePlayer(msg.userId, msg.position); }
@@ -629,6 +632,23 @@
           }
         });
       });
+
+      // 🕹️ Move Map switch — authoritative state lives on the server;
+      // clicking sends the toggle request and the UI updates when the
+      // SET_MOVE_MAP broadcast (which echoes to the sender) arrives.
+      let moveMapOn = false;
+      const moveMapBtn = document.getElementById('move-map-btn');
+      function setMoveMapUI(on) {
+        moveMapOn = on;
+        moveMapBtn.classList.toggle('active', on);
+        moveMapBtn.title = on
+          ? 'Move Map ON — VR thumbsticks slide the map around the room'
+          : 'Move Map — when ON, the VR player\'s thumbsticks slide the whole map around their room';
+      }
+      moveMapBtn.onclick = () => {
+        wsSend({ type: 'SET_MOVE_MAP', on: !moveMapOn });
+        if (!wsReady) showToast('Not connected — try again in a second.');
+      };
 
       // 🎲 Random-mode toggle — selecting turns off any pending item so
       // the two modes can't hold inconsistent state.

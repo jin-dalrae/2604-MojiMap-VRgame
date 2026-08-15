@@ -16,7 +16,7 @@
 // Why a server token endpoint: never ship the real OpenAI key to the
 // browser. The ephemeral key is short-lived (~1 minute) and scoped.
 
-import { createSystem } from "@iwsdk/core";
+import { createSystem, VisibilityState } from "@iwsdk/core";
 import { GameActions } from "./game-state.js";
 
 // Whisper transcribes "poo poo doo doo" in dozens of forms — Foo-foo,
@@ -105,6 +105,32 @@ export class VoiceSystem extends createSystem({}) {
     };
     window.addEventListener("pointerdown", start);
     window.addEventListener("keydown", start);
+
+    // On Quest the session starts via the browser's native offerSession
+    // prompt — no DOM pointerdown/keydown EVER fires, so the gesture
+    // listeners above never trigger and voice silently stays off. Kick
+    // a connect attempt whenever the XR session becomes visible (with a
+    // couple of spaced retries — the mic permission overlay can reject
+    // the first attempt while the session is still settling).
+    this.cleanupFuncs.push(
+      this.world.visibilityState.subscribe((state) => {
+        if (state !== VisibilityState.Visible) return;
+        this.connectWithRetries(3);
+      }),
+    );
+  }
+
+  private async connectWithRetries(attempts: number) {
+    for (let i = 0; i < attempts; i++) {
+      if (this.connected || this.connecting) return;
+      try {
+        await this.connect();
+        return;
+      } catch (e) {
+        console.warn(`[Voice] connect attempt ${i + 1}/${attempts} failed:`, e);
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
   }
 
   private async connect() {

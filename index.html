@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MojiMap — an AR emoji arena</title>
   <meta name="description" content="An asymmetric, multi-screen WebXR party game. Put on a Quest, walk around your room, collect stars, fight emoji enemies." />
+  <script>
+    // Dev-only: the IWER emulator's Playwright-managed tab always opens the
+    // site root, but everything testable lives in the game page. Hop there.
+    // __IWER_MCP_MANAGED is only ever set in that managed tab.
+    if (window.__IWER_MCP_MANAGED) location.replace('/play.html');
+  </script>
   <style>
     :root {
       --bg:        #09090b;

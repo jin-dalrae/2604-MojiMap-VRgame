@@ -218,6 +218,15 @@ export const SWORD_SWING_MS = 300;
 // "I'm a peacock … fly" voice phrase triggers the same effect.
 export const FLIGHT_DURATION_MS = 3000;
 export const FLIGHT_ALTITUDE    = 3.0;  // meters above floor
+// Rise/descent easing — with locomotion disabled there is no gravity
+// raycast to bring the rig back down, so PortalSystem animates both
+// directions itself: floor drops away over RISE, returns over DESCEND.
+export const FLIGHT_RISE_MS    = 350;
+export const FLIGHT_DESCEND_MS = 650;
+
+// Move-map mode — thumbstick slide speed for repositioning the map
+// relative to the room (m/s). Gated by the mobile portal's switch.
+export const MOVE_MAP_SPEED = 2.0;
 // Legacy: mega-jump constants still used by the locomotor path inside
 // megaJump() as a fallback FX if flight-altitude override is unavailable.
 export const MEGA_JUMP_HEIGHT  = 8;

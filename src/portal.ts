@@ -16,6 +16,7 @@ import {
   Object3D,
   AdditiveBlending,
   setWorldPosition,
+  InputComponent,
 } from "@iwsdk/core";
 import { type Signal } from "@preact/signals-core";
 import { FX, pulse } from "./game-fx.js";
@@ -74,6 +75,9 @@ import {
   MEGA_JUMP_COOLDOWN_MS,
   FLIGHT_DURATION_MS,
   FLIGHT_ALTITUDE,
+  FLIGHT_RISE_MS,
+  FLIGHT_DESCEND_MS,
+  MOVE_MAP_SPEED,
   enemyBehavior,
   type ItemRole,
 } from "./game-state.js";
@@ -369,6 +373,18 @@ export class PortalSystem extends createSystem({}) {
   // While flying, the player is lifted to FLIGHT_ALTITUDE every frame
   // and takeHit() bails, giving ~3s of invulnerable sky-walk.
   private flyUntil = 0;
+  // Flight lift/descent animation. The rig doesn't teleport to altitude:
+  // it eases up over FLIGHT_RISE_MS at the start of a flight, and — since
+  // locomotion is disabled, so no gravity raycast will ever bring it
+  // back — eases back down to floor level over FLIGHT_DESCEND_MS when
+  // the window expires. Visually: the floor drops away, then returns.
+  private flightStartAt = 0;
+  private descendUntil = 0;
+  // Move-map mode (toggled from the mobile portal, synced via server).
+  // When on, thumbsticks slide the XROrigin horizontally — visually the
+  // map repositions relative to the physical room. Head-relative so
+  // pushing forward always moves you the way you're looking.
+  private moveMapEnabled = false;
   // 🍄 follower chain — each pickup spawns a sprite that trails the
   // player's head at an increasing time-delay along the recorded path.
   private mushrooms: Array<{ sprite: Sprite; delayMs: number }> = [];
@@ -771,6 +787,7 @@ export class PortalSystem extends createSystem({}) {
         if (typeof msg.emojiScale === 'number') {
           GameState.emojiScale(this.world.globals as Record<string, unknown>).value = msg.emojiScale;
         }
+        this.moveMapEnabled = !!msg.moveMapEnabled;
         for (const key of [...this.spawnedEntities.keys()]) this.despawnItem(key);
         for (const [key, item] of Object.entries(msg.grid as Record<string, any>)) {
           this.spawnItem(key, item);
@@ -908,6 +925,11 @@ export class PortalSystem extends createSystem({}) {
         }
         break;
       }
+
+      case 'SET_MOVE_MAP':
+        this.moveMapEnabled = !!msg.on;
+        console.log(`[MoveMap] thumbstick map repositioning ${this.moveMapEnabled ? 'ON' : 'OFF'}`);
+        break;
 
       case 'USER_JOIN':
         if (msg.userId !== this.userId) this.updateAvatar(msg.userId, msg.position);
@@ -1461,32 +1483,57 @@ export class PortalSystem extends createSystem({}) {
     if (now - this.megaJumpLastAt < MEGA_JUMP_COOLDOWN_MS) return;
     this.megaJumpLastAt = now;
     this.flyUntil = now + FLIGHT_DURATION_MS;
+    this.flightStartAt = now;
+    this.descendUntil = 0;
     this.hasMegaJump.value = true;
-
-    // Instant lift — setWorldPosition on the XROrigin.
-    this.player.getWorldPosition(this.tempPos);
-    this.tempPos.y = FLIGHT_ALTITUDE;
-    setWorldPosition(this.player, this.tempPos);
 
     FX.megaJump(this.input.gamepads.left ?? this.input.gamepads.right);
     console.log(`[Flight] invulnerable flight for ${FLIGHT_DURATION_MS}ms`);
   }
 
-  // Per-frame altitude hold. Overrides gravity on the XROrigin while
-  // the flight window is active; once it expires, gravity takes over
-  // naturally and the player falls to the floor.
+  // Per-frame altitude animation on the XROrigin. Rise phase eases the
+  // rig up (the floor appears to drop away); hold phase pins altitude;
+  // descent phase eases the rig back to floor level so the world
+  // returns to normal. All rig-relative — physical walking is preserved.
   private tickFlight() {
     const now = performance.now();
-    if (this.flyUntil === 0) return;
-    if (now >= this.flyUntil) {
-      // Flight just ended — release the altitude override + hide badge.
-      this.flyUntil = 0;
-      this.hasMegaJump.value = false;
+
+    // Descent phase — flight over, floor coming back up to meet you.
+    if (this.descendUntil !== 0) {
+      const remaining = this.descendUntil - now;
+      this.player.getWorldPosition(this.tempPos);
+      if (remaining <= 0) {
+        this.tempPos.y = this.megaJumpFloorY;
+        setWorldPosition(this.player, this.tempPos);
+        this.descendUntil = 0;
+        return;
+      }
+      const t = 1 - remaining / FLIGHT_DESCEND_MS;    // 0 → 1
+      const eased = t * t * (3 - 2 * t);              // smoothstep
+      this.tempPos.y =
+        this.megaJumpFloorY + (FLIGHT_ALTITUDE - this.megaJumpFloorY) * (1 - eased);
+      setWorldPosition(this.player, this.tempPos);
       return;
     }
+
+    if (this.flyUntil === 0) return;
+    if (now >= this.flyUntil) {
+      // Flight just ended — hide the badge and start the descent.
+      this.flyUntil = 0;
+      this.hasMegaJump.value = false;
+      this.descendUntil = now + FLIGHT_DESCEND_MS;
+      return;
+    }
+
+    // Rise phase, then altitude hold.
+    const sinceStart = now - this.flightStartAt;
+    const t = Math.min(1, sinceStart / FLIGHT_RISE_MS); // 0 → 1
+    const eased = t * t * (3 - 2 * t);                  // smoothstep
+    const target =
+      this.megaJumpFloorY + (FLIGHT_ALTITUDE - this.megaJumpFloorY) * eased;
     this.player.getWorldPosition(this.tempPos);
-    if (this.tempPos.y < FLIGHT_ALTITUDE) {
-      this.tempPos.y = FLIGHT_ALTITUDE;
+    if (this.tempPos.y < target || t >= 1) {
+      this.tempPos.y = target;
       setWorldPosition(this.player, this.tempPos);
     }
   }
@@ -1495,6 +1542,39 @@ export class PortalSystem extends createSystem({}) {
   // without a rename in the middle of other edits.
   private tickMegaJump(_deltaSeconds: number) {
     /* intentionally empty */
+  }
+
+  // Move-map mode — either thumbstick slides the XROrigin on XZ,
+  // head-relative, so the map visually repositions around the player.
+  // Deadzone filters drift; y is left alone so flight stays intact.
+  private tickMoveMap(deltaSeconds: number) {
+    if (!this.moveMapEnabled) return;
+    const pad =
+      this.input.gamepads.left ?? this.input.gamepads.right;
+    const axes = pad?.getAxesValues(InputComponent.Thumbstick);
+    if (!axes) return;
+    const DEADZONE = 0.15;
+    const ax = Math.abs(axes.x) < DEADZONE ? 0 : axes.x;
+    const ay = Math.abs(axes.y) < DEADZONE ? 0 : axes.y;
+    if (ax === 0 && ay === 0) return;
+
+    // Head-relative XZ basis (same forward convention as the position
+    // broadcast: -getWorldDirection).
+    this.player.head.getWorldDirection(this.tempFwd);
+    let fx = -this.tempFwd.x;
+    let fz = -this.tempFwd.z;
+    const len = Math.hypot(fx, fz) || 1;
+    fx /= len;
+    fz /= len;
+    const rx = -fz; // right = forward × up
+    const rz = fx;
+
+    // Stick forward is -y. Push forward → walk the way you're looking.
+    const step = MOVE_MAP_SPEED * deltaSeconds;
+    this.player.getWorldPosition(this.tempPos);
+    this.tempPos.x += (fx * -ay + rx * ax) * step;
+    this.tempPos.z += (fz * -ay + rz * ax) * step;
+    setWorldPosition(this.player, this.tempPos);
   }
 
   // Wood damage — 5 sword hits to break. Flashes red per hit (the wall
@@ -2141,6 +2221,9 @@ export class PortalSystem extends createSystem({}) {
     // Mega-jump runs any time so an in-flight jump completes cleanly
     // even at round-end / death.
     this.tickMegaJump(delta);
+    // Move-map mode — thumbstick slides the rig (map repositions
+    // relative to the room). Gated by the mobile portal's switch.
+    this.tickMoveMap(delta);
     // Feather flight — holds the player at altitude and counts down
     // the invulnerability window. Runs unconditionally so it can
     // release the override cleanly at round-end or after death.

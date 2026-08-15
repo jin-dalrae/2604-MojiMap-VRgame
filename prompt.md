@@ -931,3 +931,15 @@ yes there is a working version that used to work, it was stable, it had a timer,
 ```
 yes sort it out, make sure its the version without the admin password. make sure its with the tall walls, not the one where the wlls are short. also make it the one with the openai saying things api to do certian actions like throw poo.
 ```
+
+## 2026-08-15T00:45:00Z
+
+```
+authorized
+```
+
+## 2026-08-15T01:00:00Z
+
+```
+ok, this is good. now i see we hav ethe updated icons too. can you make it so that when you jump, the floor goes down, but then returns to normal? also can you make it so that the vioce part works.  can you make its so the joysitcs work to move around the map if you have move map switch set to ons on the mobile interface? right now it seems like you cannot move the joystics to reposition the map.
+```
