@@ -164,17 +164,27 @@ export const EMOJI_SCALE_DEFAULT = 1.0;
 export const EMOJI_SCALE_MIN = 0.4;
 export const EMOJI_SCALE_MAX = 2.0;
 
-// The grid coverage itself (8 cols × 8 rows) doesn't change — only
-// the per-cell size does. Helpers read the current scale signal so
-// every consumer stays in sync with the slider.
+// Board dimensions — 12 cols (X / east-west) × 8 rows (Z / north-south),
+// i.e. wider than it is deep. Cell *count* is fixed; only the per-cell
+// size changes via the slider. Every consumer derives from these two
+// constants, so changing them here changes the whole game.
+// Mirrored in server.js (GRID_COLS/GRID_ROWS), portal.html and
+// portal-mobile.html (COLS/ROWS) — keep all four in sync.
+export const GRID_COLS = 12;
+export const GRID_ROWS = 8;
+// Cell centers are offset by half the span so the board straddles the
+// origin: col c → x = (c - (COLS-1)/2) * scale, row r → z likewise.
+export const GRID_COL_CENTER = (GRID_COLS - 1) / 2; // 5.5
+export const GRID_ROW_CENTER = (GRID_ROWS - 1) / 2; // 3.5
+
 export function currentGridScale(g: Globals): number {
   return GameState.gridScale(g).peek();
 }
 export function currentEmojiScale(g: Globals): number {
   return GameState.emojiScale(g).peek();
 }
-export function boardHalfW(g: Globals): number { return 4 * currentGridScale(g); }
-export function boardHalfD(g: Globals): number { return 4 * currentGridScale(g); }
+export function boardHalfW(g: Globals): number { return (GRID_COLS / 2) * currentGridScale(g); }
+export function boardHalfD(g: Globals): number { return (GRID_ROWS / 2) * currentGridScale(g); }
 // Skull circle radii cap at the smaller play-space dimension so the
 // orbit at least has a chance of staying on the board.
 export function boardMinDim(g: Globals): number {

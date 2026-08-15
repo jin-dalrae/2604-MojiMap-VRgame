@@ -1,7 +1,7 @@
 # 🌌 MojiMap — Game Manual
 
 **A WebXR emoji arena built with the Immersive Web SDK.**
-One player straps on a Quest. A designer drops emojis onto an 8×8 grid from a laptop. Phones in the audience throw attacks. A broadcast view streams the whole thing to a TV. You walk — physically — around your living room and try to survive long enough to collect every ⭐ on the map.
+One player straps on a Quest. A designer drops emojis onto a 12×8 grid from a laptop. Phones in the audience throw attacks. A broadcast view streams the whole thing to a TV. You walk — physically — around your living room and try to survive long enough to collect every ⭐ on the map.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![WebXR](https://img.shields.io/badge/WebXR-Quest%203-brightgreen.svg)

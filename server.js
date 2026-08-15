@@ -30,10 +30,12 @@ const users = new Map();     // userId -> { position: {x, z, heading}, spaceId }
 
 // ── Default grid seed ───────────────────────────────────────
 // Every process boot (== every deploy) starts with a fresh randomized
-// 8×8 layout so the designer never walks into an empty grid. Exactly
+// layout so the designer never walks into an empty grid. Exactly
 // one chair 🪑 is placed, and GRID_PLACE enforces the same rule at
 // runtime — you can't spawn a second one.
-const GRID_COLS = 8;
+// 12 × 8 — wider (east-west) than deep (north-south). Mirrored in
+// src/game-state.ts, portal.html and portal-mobile.html; keep in sync.
+const GRID_COLS = 12;
 const GRID_ROWS = 8;
 const ITEM_CATALOG = {
   chair:        { icon: '🪑', label: 'Start Pt', role: 'spawn' },
@@ -54,25 +56,26 @@ const ITEM_CATALOG = {
   cube:         { icon: '🟦', label: 'Wall',     role: 'decor' },
   wood:         { icon: '🟫', label: 'Wood',     role: 'decor' },
 };
-// Counts sum to 64 — a completely full board.
+// Counts sum to 96 (= 12 × 8) — a completely full board. Scaled up from
+// the old 64-cell 8×8 seed, keeping roughly the same mix by proportion.
 const DEFAULT_DISTRIBUTION = [
   ['chair',        1],
-  ['star',        10],
-  ['banana',       3],
-  ['mushroom',     3],
-  ['sword',        1],
-  ['hammer',       1],
-  ['gun',          1],
-  ['poopoodoodoo', 1],
-  ['feather',      2],
-  ['fire',         5],
-  ['robot',        3],
-  ['ghost',        2],
-  ['skull',        2],
-  ['snowman',      2],
-  ['bird',         4],
-  ['cube',        15],
-  ['wood',         8],
+  ['star',        15],
+  ['banana',       4],
+  ['mushroom',     4],
+  ['sword',        2],
+  ['hammer',       2],
+  ['gun',          2],
+  ['poopoodoodoo', 2],
+  ['feather',      3],
+  ['fire',         8],
+  ['robot',        5],
+  ['ghost',        3],
+  ['skull',        3],
+  ['snowman',      3],
+  ['bird',         6],
+  ['cube',        21],
+  ['wood',        12],
 ];
 
 function seedRandomGrid() {
@@ -115,8 +118,10 @@ function hasChairElsewhere(excludeKey) {
 let gridScale = 1.44; // 1.44m per cell — 8×8 = 11.52m × 11.52m playable area (1.2× the previous 9.6m default)
 let emojiScale = 1.0;
 // Move-map mode — when on, VR clients let the thumbsticks slide the
-// map relative to the physical room. Toggled from the mobile portal.
-let moveMapEnabled = false;
+// map relative to the physical room. Toggled from either portal.
+// Defaults ON so the sticks just work in AR without hunting for a
+// switch; turn it off for a strict physical-walking-only round.
+let moveMapEnabled = true;
 const GRID_SCALE_MIN = 0.48;
 const GRID_SCALE_MAX = 2.4;
 const EMOJI_SCALE_MIN = 0.4;

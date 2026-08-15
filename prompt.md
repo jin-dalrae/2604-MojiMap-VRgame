@@ -943,3 +943,15 @@ authorized
 ```
 ok, this is good. now i see we hav ethe updated icons too. can you make it so that when you jump, the floor goes down, but then returns to normal? also can you make it so that the vioce part works.  can you make its so the joysitcs work to move around the map if you have move map switch set to ons on the mobile interface? right now it seems like you cannot move the joystics to reposition the map.
 ```
+
+## 2026-08-15T02:00:00Z
+
+```
+the iphone app looks the same. it looks fucked up, its not keeping the map in the middle.
+```
+
+## 2026-08-15T02:20:00Z
+
+```
+make the map wider than it is tall, 8 x 12. also, i cannot use the joysticks in the ar mode to move around teh map. the joysticks are disabled.
+```

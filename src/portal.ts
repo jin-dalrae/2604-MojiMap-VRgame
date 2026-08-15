@@ -78,15 +78,17 @@ import {
   FLIGHT_RISE_MS,
   FLIGHT_DESCEND_MS,
   MOVE_MAP_SPEED,
+  GRID_COL_CENTER,
+  GRID_ROW_CENTER,
   enemyBehavior,
   type ItemRole,
 } from "./game-state.js";
 
 // ── Grid coordinate mapping ──────────────────────────────────
-// Portal grid: 8 cols × 8 rows, cells scaled by the live gridScale
-// signal so the play area fits a Quest room boundary (portal slider
-// drives it). Cell centers → world:
-//   x = (col - 3.5) * scale, z = (row - 3.5) * scale.
+// Portal grid: GRID_COLS × GRID_ROWS (12 × 8 — wider than deep), cells
+// scaled by the live gridScale signal so the play area fits a Quest room
+// boundary (portal slider drives it). Cell centers → world:
+//   x = (col - GRID_COL_CENTER) * scale, z = (row - GRID_ROW_CENTER) * scale.
 // y stays fixed at 0.55m so billboards hover at a human-friendly
 // height regardless of cell scale.
 function gridToWorld(
@@ -94,7 +96,11 @@ function gridToWorld(
   col: number,
   scale: number,
 ): [number, number, number] {
-  return [(col - 3.5) * scale, 0.55, (row - 3.5) * scale];
+  return [
+    (col - GRID_COL_CENTER) * scale,
+    0.55,
+    (row - GRID_ROW_CENTER) * scale,
+  ];
 }
 
 // Backfill a role for legacy items whose stored `role` is 'decor'.
@@ -384,7 +390,7 @@ export class PortalSystem extends createSystem({}) {
   // When on, thumbsticks slide the XROrigin horizontally — visually the
   // map repositions relative to the physical room. Head-relative so
   // pushing forward always moves you the way you're looking.
-  private moveMapEnabled = false;
+  private moveMapEnabled = true;
   // 🍄 follower chain — each pickup spawns a sprite that trails the
   // player's head at an increasing time-delay along the recorded path.
   private mushrooms: Array<{ sprite: Sprite; delayMs: number }> = [];
@@ -1549,13 +1555,17 @@ export class PortalSystem extends createSystem({}) {
   // Deadzone filters drift; y is left alone so flight stays intact.
   private tickMoveMap(deltaSeconds: number) {
     if (!this.moveMapEnabled) return;
-    const pad =
-      this.input.gamepads.left ?? this.input.gamepads.right;
-    const axes = pad?.getAxesValues(InputComponent.Thumbstick);
-    if (!axes) return;
+    // Read BOTH sticks and take whichever is being pushed — picking one
+    // pad up front would silently ignore the other hand's stick.
     const DEADZONE = 0.15;
-    const ax = Math.abs(axes.x) < DEADZONE ? 0 : axes.x;
-    const ay = Math.abs(axes.y) < DEADZONE ? 0 : axes.y;
+    let ax = 0;
+    let ay = 0;
+    for (const pad of [this.input.gamepads.left, this.input.gamepads.right]) {
+      const axes = pad?.getAxesValues(InputComponent.Thumbstick);
+      if (!axes) continue;
+      if (Math.abs(axes.x) > DEADZONE && Math.abs(axes.x) > Math.abs(ax)) ax = axes.x;
+      if (Math.abs(axes.y) > DEADZONE && Math.abs(axes.y) > Math.abs(ay)) ay = axes.y;
+    }
     if (ax === 0 && ay === 0) return;
 
     // Head-relative XZ basis (same forward convention as the position

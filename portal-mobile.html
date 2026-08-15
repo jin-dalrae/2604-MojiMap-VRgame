@@ -95,14 +95,17 @@
         overflow: hidden;
       }
       /* Chess-board layout: first row = column labels, first column =
-         row labels, rest = 8×8 data cells. Labels take a fixed ~7% of
-         the square; data cells share the rest as 1fr each. */
+         row labels, rest = 12×8 data cells. The label band and the
+         element's width/height are both set by fitGrid() in JS so the
+         cells stay square on a non-square board. */
       .grid {
-        /* width/height set by fitGrid() in JS. */
-        --label: clamp(14px, 7%, 22px);
+        /* width/height/--label set by fitGrid() in JS. */
+        --label: 22px;
+        --grid-cols: 12;
+        --grid-rows: 8;
         display: grid;
-        grid-template-columns: var(--label) repeat(8, 1fr);
-        grid-template-rows:    var(--label) repeat(8, 1fr);
+        grid-template-columns: var(--label) repeat(var(--grid-cols), 1fr);
+        grid-template-rows:    var(--label) repeat(var(--grid-rows), 1fr);
         gap: 0;
         background: var(--cell-border);
         border: 1px solid var(--cell-border);
@@ -166,7 +169,7 @@
       .sticker-ghost { transform: scale(1.10); }
       .sticker-chair { transform: scale(1.10); }
 
-      /* Player dots live above the 8×8 data area only — inset matches
+      /* Player dots live above the 12×8 data area only — inset matches
          the grid's header label strip so 0–100% maps to the data area. */
       .players-layer {
         position: absolute;
@@ -343,9 +346,12 @@
     </div>
 
     <script>
-      // 8×8 grid must match the VR board (see src/index.ts).
-      const COLS = 8, ROWS = 8;
+      // Must match GRID_COLS/GRID_ROWS in src/game-state.ts + server.js.
+      const COLS = 12, ROWS = 8;
       const HALF_C = COLS / 2, HALF_R = ROWS / 2;
+      // Live cell size in metres, mirrored from the server (WELCOME +
+      // SET_GRID_SCALE). Drives the player-dot overlay math.
+      let liveGridScale = 1.44;
 
       // Must match src/portal.ts: ITEM_TEXTURES + ROLE_BY_ICON + TYPE_TO_ROLE.
       // When a type has a sticker here, both the palette button and the
@@ -423,8 +429,10 @@
             Object.entries(msg.grid).forEach(([k, v]) => state.set(k, v));
             syncGrid();
             setMoveMapUI(!!msg.moveMapEnabled);
+            if (typeof msg.gridScale === 'number') liveGridScale = msg.gridScale;
           } else if (msg.type === 'GRID_UPDATE')    { state.set(msg.key, msg.item); syncGrid(); }
             else if (msg.type === 'SET_MOVE_MAP')   { setMoveMapUI(!!msg.on); }
+            else if (msg.type === 'SET_GRID_SCALE') { if (typeof msg.scale === 'number') liveGridScale = msg.scale; }
             else if (msg.type === 'GRID_CLEAR')     { state.delete(msg.key);        syncGrid(); }
             else if (msg.type === 'GRID_CLEAR_ALL') { state.clear();                syncGrid(); }
             else if (msg.type === 'PLAYER_POSITION'){ updatePlayer(msg.userId, msg.position); }
@@ -456,7 +464,7 @@
       // Build the grid once — chess-board layout:
       //   row 0, col 0..7        →  column header labels (0..7)
       //   row 0..7, col 0        →  row header labels    (0..7)
-      //   row 1..8, col 1..8     →  the 8×8 data cells   (keyed "r,c")
+      //   row 1..ROWS, col 1..COLS →  the 12×8 data cells   (keyed "r,c")
       // Players layer is inserted last so its absolute positioning
       // stacks above the cells; its inset is offset to match the data area.
       const gridEl = document.getElementById('grid');
@@ -464,10 +472,18 @@
       // Grid is always the largest square that fully fits the wrap —
       // capped by BOTH width and height so the whole board is visible
       // on any viewport aspect ratio.
+      // The board is COLS × ROWS (12 × 8 — not square), so size it to the
+      // largest rectangle of that aspect that fits, with square cells.
+      // The label strip is one fixed band on each axis, so it's subtracted
+      // before dividing the remainder into cells.
       function fitGrid(rect) {
-        const size = Math.max(0, Math.min(rect.width, rect.height));
-        gridEl.style.width  = size + 'px';
-        gridEl.style.height = size + 'px';
+        const w = Math.max(0, rect.width);
+        const h = Math.max(0, rect.height);
+        const label = Math.max(14, Math.min(22, Math.min(w, h) * 0.07));
+        const cell = Math.max(0, Math.min((w - label) / COLS, (h - label) / ROWS));
+        gridEl.style.setProperty('--label', label + 'px');
+        gridEl.style.width  = (label + cell * COLS) + 'px';
+        gridEl.style.height = (label + cell * ROWS) + 'px';
       }
       if (typeof ResizeObserver !== 'undefined') {
         new ResizeObserver((entries) => fitGrid(entries[0].contentRect)).observe(gridWrapEl);
@@ -662,11 +678,11 @@
         clearSelection();
       };
 
-      // Dot overlay: convert world (x,z) back to grid cell indices and plot.
-      // VR board is 8×8 with gridScale cells; col c → x = (c + 0.5 − HALF_C) * cell.
-      // We invert to col = x/cell + HALF_C − 0.5. But WS only sends world x/z;
-      // we render proportionally to grid span instead, so it scales with the
-      // board visualization regardless of the live scale value.
+      // Dot overlay: convert world (x,z) to a fraction of the data area.
+      // VR board is 12 × 8 cells of liveGridScale metres each, centred on
+      // the origin, so it spans ±(COLS/2 · cell) east-west and
+      // ±(ROWS/2 · cell) north-south. Those half-extents differ now that
+      // the board isn't square, and both track the live scale slider.
       function updatePlayer(id, pos) {
         if (!pos) return;
         let p = players.get(id);
@@ -677,12 +693,11 @@
           document.getElementById('players').appendChild(p);
           players.set(id, p);
         }
-        // Normalize x,z to [0, 1] across the board half-extents.
-        // Board spans roughly [-HALF*cell, +HALF*cell]; with 8×8 and
-        // default 0.75m cell that's ±3m. Treat ±3m as the viz extent.
-        const EXT = 3; // meters — matches 8 × 0.75m / 2
-        const u = (pos.x + EXT) / (EXT * 2);
-        const v = (pos.z + EXT) / (EXT * 2);
+        const cell = liveGridScale || 1;
+        const extX = HALF_C * cell;
+        const extZ = HALF_R * cell;
+        const u = (pos.x + extX) / (extX * 2);
+        const v = (pos.z + extZ) / (extZ * 2);
         p.style.left = (u * 100) + '%';
         p.style.top  = (v * 100) + '%';
       }

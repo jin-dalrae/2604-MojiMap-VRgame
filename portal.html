@@ -22,8 +22,11 @@
         --cell-alt: #18181d;
         --cell-border: #222226;
         --success: #10b981;
-        /* cell size: fit 8 cols + 7 gaps(3px) + board/area padding into viewport width */
-        --cell-size: clamp(28px, calc((100vw - 88px) / 8), 72px);
+        /* Board is 12 cols × 8 rows. Cell size must fit 12 cols + 11
+           gaps(3px) + board/area padding into the viewport width. */
+        --grid-cols: 12;
+        --grid-rows: 8;
+        --cell-size: clamp(18px, calc((100vw - 88px) / 12), 72px);
       }
 
       html, body {
@@ -36,20 +39,34 @@
         color: var(--text);
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
         display: grid;
-        grid-template-rows: 40px auto 1fr 30px;
+        grid-template-rows: auto auto 1fr 30px;
         height: 100dvh;
+        /* Grid rows are auto-width by default, so a too-wide child (the
+           header's controls on a phone) would stretch the whole body past
+           the viewport and drag the centered grid off-screen with it.
+           Pin every row to the viewport width and let rows scroll/wrap
+           internally instead. */
+        width: 100%;
+        max-width: 100vw;
+        overflow-x: hidden;
       }
+      body > * { min-width: 0; }
 
       /* ── Header ── */
       header {
         background: var(--surface);
         border-bottom: 1px solid var(--border);
-        padding: 0 12px;
+        padding: 6px 12px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
         flex-shrink: 0;
+        /* Phone widths can't fit title + round controls + both sliders on
+           one line; wrapping keeps them all reachable instead of pushing
+           the page wider than the screen. Desktop re-pins to one row. */
+        flex-wrap: wrap;
+        min-height: 40px;
       }
 
       header h1 {
@@ -60,6 +77,12 @@
       }
 
       .header-actions { display: flex; gap: 6px; align-items: center; }
+      /* Move-map toggle — green pill when active (matches portal-mobile). */
+      .btn-ghost.active {
+        background: rgba(16,185,129,0.18);
+        border-color: var(--success);
+        color: var(--text);
+      }
 
       /* ── Stage-size slider ── */
       .grid-scale-label {
@@ -248,7 +271,10 @@
       /* ── Leaderboard (VR player scores) ── */
       .leaderboard {
         position: fixed;
-        top: 56px;
+        /* Anchored below the header. The header wraps to 2–3 rows on
+           phones, so its height isn't a constant — --header-h is kept in
+           sync by a ResizeObserver rather than hard-coded here. */
+        top: calc(var(--header-h, 40px) + 8px);
         right: 12px;
         background: rgba(18,18,22,0.92);
         border: 1px solid var(--border);
@@ -317,11 +343,21 @@
 
       @media (max-width: 900px) {
         .leaderboard {
-          top: 48px;
           right: 8px;
           min-width: 140px;
           padding: 6px 8px;
           font-size: 10px;
+        }
+      }
+      /* On phones the board uses nearly the full width, so a top-right
+         overlay would sit on top of placeable cells. Drop it to the
+         bottom-left instead, above the status bar and clear of the grid. */
+      @media (max-width: 639px) {
+        .leaderboard {
+          top: auto;
+          bottom: 38px;
+          left: 8px;
+          right: auto;
         }
       }
 
@@ -415,8 +451,8 @@
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(8, var(--cell-size));
-        grid-template-rows: repeat(8, var(--cell-size));
+        grid-template-columns: repeat(var(--grid-cols), var(--cell-size));
+        grid-template-rows: repeat(var(--grid-rows), var(--cell-size));
         gap: 3px;
       }
 
@@ -609,6 +645,7 @@
         :root { --cell-size: 48px; }
 
         body { grid-template-rows: 48px 1fr 36px; }
+        header { flex-wrap: nowrap; padding: 0 12px; }
 
         /* hide mobile-only elements */
         body > .grid-area,
@@ -680,6 +717,7 @@
         <span id="emoji-scale-value" class="grid-scale-value">1.00×</span>
       </label>
       <div class="header-actions">
+        <button class="btn btn-ghost" id="move-map-btn" title="Move Map — when ON, the VR player's thumbsticks slide the whole map around their room">🕹️ Move Map</button>
         <button class="btn btn-ghost" id="clear-btn">Clear</button>
         <button class="btn btn-primary" id="start-round-btn">Start Round</button>
       </div>
@@ -703,7 +741,7 @@
 
     <!-- Mobile layout: grid area directly in body -->
     <div class="grid-area" id="grid-area-mobile">
-      <div class="grid-meta">Birds Eye · 8×8 · tap item below then tap cell</div>
+      <div class="grid-meta">Birds Eye · 12×8 · tap item below then tap cell</div>
       <div class="grid-board">
         <span class="compass compass-n">N</span>
         <span class="compass compass-s">S</span>
@@ -772,7 +810,7 @@
       </div>
 
       <div class="grid-area" id="grid-area-desktop">
-        <div class="grid-meta">Birds Eye · 8×8 · drag or tap to place</div>
+        <div class="grid-meta">Birds Eye · 12×8 · drag or tap to place</div>
         <div class="grid-board">
           <span class="compass compass-n">N</span>
           <span class="compass compass-s">S</span>
@@ -792,7 +830,13 @@
     <div id="drag-ghost"></div>
 
     <script>
-      const COLS = 8, ROWS = 8;
+      // Must match GRID_COLS/GRID_ROWS in src/game-state.ts + server.js.
+      const COLS = 12, ROWS = 8;
+      const COL_CENTER = (COLS - 1) / 2, ROW_CENTER = (ROWS - 1) / 2;
+      // Live cell size in metres, mirrored from the server/slider by
+      // reflectGridScale(). Declared here (not next to the slider) so the
+      // presence-dot math can read it without a temporal-dead-zone risk.
+      let liveGridScale = 1.44;
 
       // ── Role inference ────────────────────────────────────────
       // Drives VR behavior: pickups get halos + equipment grant, hazards
@@ -869,6 +913,7 @@
               syncGrids();
               if (typeof msg.gridScale === 'number') reflectGridScale(msg.gridScale);
               if (typeof msg.emojiScale === 'number') reflectEmojiScale(msg.emojiScale);
+              setMoveMapUI(!!msg.moveMapEnabled);
               // Adopt any in-progress or pending round from the snapshot.
               if (msg.round && msg.round.endsAt > Date.now()) {
                 roundEndsAt = msg.round.endsAt;
@@ -920,6 +965,10 @@
               // Server echoes the clamped value — reflect it in the UI
               // so the slider snaps if the operator dragged out of range.
               if (typeof msg.scale === 'number') reflectGridScale(msg.scale);
+              break;
+
+            case 'SET_MOVE_MAP':
+              setMoveMapUI(!!msg.on);
               break;
 
             case 'SET_EMOJI_SCALE':
@@ -997,8 +1046,8 @@
       connectWS();
 
       // ── Multi-user presence ─────────────────────────────────
-      // VR world: col c → x = c - 3.5, row r → z = r - 3.5
-      // Inverse:  col = x + 3.5, row = z + 3.5
+      // VR world: col c → x = (c - COL_CENTER) * scale, row r → z likewise.
+      // Inverse:  col = x / scale + COL_CENTER, row = z / scale + ROW_CENTER.
       // Heading: atan2(fwd.x, fwd.z) in world. heading=0 → fwd=+z (screen down),
       //          heading=π/2 → +x (screen right), heading=π → -z (screen up).
       //          CSS rotation (cw from default down-pointing cone) = heading rad → deg.
@@ -1220,8 +1269,11 @@
           const gapX = r01.left - r00.right;
           const gapY = r10.top  - r00.bottom;
 
-          const col = pos.x + 3.5;
-          const row = pos.z + 3.5;
+          // VR world → cell index. Must divide by the live cell size:
+          // x = (col - COL_CENTER) * scale  ⇒  col = x / scale + COL_CENTER.
+          const scale = liveGridScale || 1;
+          const col = pos.x / scale + COL_CENTER;
+          const row = pos.z / scale + ROW_CENTER;
 
           const px = (r00.left - boardRect.left) + col * (cellW + gapX) + cellW / 2;
           const py = (r00.top  - boardRect.top)  + row * (cellH + gapY) + cellH / 2;
@@ -1433,6 +1485,23 @@
         wsSend({ type: 'GRID_CLEAR_ALL' });
       });
 
+      // ── Move Map toggle ──────────────────────────────────────
+      // Authoritative state is the server's; clicking sends the request
+      // and the UI updates when the SET_MOVE_MAP broadcast echoes back.
+      let moveMapOn = true;
+      const moveMapBtn = document.getElementById('move-map-btn');
+      function setMoveMapUI(on) {
+        moveMapOn = on;
+        moveMapBtn.classList.toggle('active', on);
+        moveMapBtn.title = on
+          ? 'Move Map ON — VR thumbsticks slide the map around the room'
+          : "Move Map — when ON, the VR player's thumbsticks slide the whole map around their room";
+      }
+      setMoveMapUI(true);
+      moveMapBtn.addEventListener('click', () => {
+        wsSend({ type: 'SET_MOVE_MAP', on: !moveMapOn });
+      });
+
       // ── Round timer ──────────────────────────────────────────
       // Authoritative timing lives on the server; portal displays a
       // client-side countdown derived from the server's `endsAt` (ms epoch).
@@ -1507,10 +1576,12 @@
       function reflectGridScale(scale) {
         gridScaleEl.value = String(scale);
         gridScaleValueEl.textContent = scale.toFixed(2) + '×';
+        liveGridScale = scale;
       }
       gridScaleEl.addEventListener('input', () => {
         const scale = parseFloat(gridScaleEl.value);
         gridScaleValueEl.textContent = scale.toFixed(2) + '×';
+        liveGridScale = scale;
         wsSend({ type: 'SET_GRID_SCALE', scale });
       });
 
@@ -1570,6 +1641,19 @@
       });
 
       renderTimer();
+
+      // Keep --header-h in sync with the header's real height. It wraps to
+      // 2–3 rows on phone widths, and the fixed-position leaderboard is
+      // anchored just below it.
+      (() => {
+        const hdr = document.querySelector('header');
+        if (!hdr) return;
+        const sync = () =>
+          document.documentElement.style.setProperty('--header-h', `${hdr.offsetHeight}px`);
+        sync();
+        if (window.ResizeObserver) new ResizeObserver(sync).observe(hdr);
+        else window.addEventListener('resize', sync);
+      })();
 
       syncGrids();
     </script>
