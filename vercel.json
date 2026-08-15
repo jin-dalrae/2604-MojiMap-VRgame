@@ -9,10 +9,6 @@
       "destination": "/broadcast.html"
     },
     {
-      "source": "/puppet",
-      "destination": "/puppet.html"
-    },
-    {
       "source": "/portal-mobile",
       "destination": "/portal-mobile.html"
     }
