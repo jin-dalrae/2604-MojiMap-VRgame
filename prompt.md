@@ -913,3 +913,21 @@ ok, great, can you get rid of teh password, and also make the wall height really
 ```
 ok, now i want you to get rid of the password to reset the map, i want you to make the default map size 1.2x bigger, (including what you can scale on the slider) and i want you to make the walls really high. after this, push to main, the live website, railway etc
 ```
+
+## 2026-08-15T00:00:00Z
+
+```
+can you check to see the status of this? we had railway connected, we also have this domain called poopoodoodoo.lol
+```
+
+## 2026-08-15T00:10:00Z
+
+```
+yes there is a working version that used to work, it was stable, it had a timer, it let users place emoji from the phone. i want an idea of what the history of our developement is.
+```
+
+## 2026-08-15T00:30:00Z
+
+```
+yes sort it out, make sure its the version without the admin password. make sure its with the tall walls, not the one where the wlls are short. also make it the one with the openai saying things api to do certian actions like throw poo.
+```
